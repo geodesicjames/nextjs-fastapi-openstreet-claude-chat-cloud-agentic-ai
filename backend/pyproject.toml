@@ -1,0 +1,50 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "FastAPI backend for the map + Claude chat app"
+requires-python = ">=3.13"
+dependencies = [
+    "alembic>=1.20.1",
+    "asyncpg>=0.32.0",
+    "fastapi[standard]>=0.163.2",
+    "pydantic-settings>=2.16.3",
+    "sqlalchemy[asyncio]>=2.1.9",
+]
+
+# No [build-system]: this is an application, not a library. uv installs the
+# dependencies into .venv and we run `app` straight from the source tree.
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pyright>=1.1.414",
+    "pytest>=9.2.0",
+    "pytest-asyncio>=1.5.0",
+    "ruff>=0.17.5",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+# E/F: pycodestyle + pyflakes, I: import sorting, B: bugbear, UP: pyupgrade,
+# ASYNC: catches blocking calls inside async functions, SIM: simplifications.
+select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM"]
+
+[tool.pyright]
+include = ["app", "tests", "alembic"]
+pythonVersion = "3.13"
+typeCheckingMode = "standard"
+venvPath = "."
+venv = ".venv"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+# One event loop for the whole session, so the async DB engine (and its
+# connection pool) created at import time can be shared across tests.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

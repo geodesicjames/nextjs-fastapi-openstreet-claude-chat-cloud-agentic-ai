@@ -1,0 +1,78 @@
+# Local development stack:  docker compose up --build
+#
+#   db        Postgres + PostGIS            localhost:5432
+#   backend   FastAPI (auto-reload)         http://localhost:8000  (docs at /docs)
+#   frontend  Next.js dev server            http://localhost:3000
+#
+# Values like ${POSTGRES_USER:-app} are read from the repo-root .env if present,
+# falling back to the default after ":-".
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app}
+      POSTGRES_DB: ${POSTGRES_DB:-app}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # $$ escapes $ so the variable is expanded inside the container.
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
+      CORS_ORIGINS: '["http://localhost:3000"]'
+    ports:
+      - "8000:8000"
+    volumes:
+      # Bind-mount the source for auto-reload. The virtualenv lives at
+      # /opt/venv in the image, so this mount does not hide it.
+      - ./backend:/app
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  frontend:
+    build: ./frontend
+    environment:
+      # Server Components call the backend over the Compose network, using the
+      # service name as hostname.
+      API_URL: http://backend:8000
+      # Polling makes file-change detection reliable on bind mounts from
+      # Windows/WSL.
+      WATCHPACK_POLLING: "true"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      # Anonymous volumes keep the container's own node_modules and build
+      # cache instead of the host's (which may contain host-specific binaries).
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  pgdata:
