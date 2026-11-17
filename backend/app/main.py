@@ -7,27 +7,26 @@ here we wire routers and middleware explicitly in code.
 Run locally with:  uv run fastapi dev app/main.py
 """
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+import logging
 
-from app.config import get_settings
-from app.routers import health
+from fastapi import FastAPI
+
+from app.routers import auth, health
 
 
 def create_app() -> FastAPI:
-    settings = get_settings()
+    # Send our own `app.*` loggers (e.g. the dev console email) to stderr at
+    # INFO. Uvicorn configures only its own loggers.
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
 
     app = FastAPI(title="Places API", version="0.1.0")
 
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,  # needed later for the httpOnly auth cookie
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+    # No CORS middleware: browsers never call this API directly. They talk
+    # only to Next.js, which calls FastAPI server-side and forwards the
+    # session cookie, so every browser request is same-origin.
 
     app.include_router(health.router)
+    app.include_router(auth.router)
 
     return app
 

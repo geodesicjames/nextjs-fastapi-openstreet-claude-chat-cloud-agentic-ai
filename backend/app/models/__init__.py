@@ -1,12 +1,12 @@
 """SQLAlchemy models.
 
-`Base` is the equivalent of Django's `models.Model`: every table class inherits
-from it, and Alembic reads `Base.metadata` to autogenerate migrations. Import
-each model module here so Alembic sees all tables.
+Every model module is imported here so that `Base.metadata` knows about all
+tables when Alembic autogenerates migrations (Django finds models through
+INSTALLED_APPS; SQLAlchemy only knows about classes that have been imported).
 """
 
-from sqlalchemy.orm import DeclarativeBase
+from app.models.auth import LoginToken, UserSession
+from app.models.base import Base
+from app.models.user import User
 
-
-class Base(DeclarativeBase):
-    pass
+__all__ = ["Base", "LoginToken", "User", "UserSession"]
