@@ -72,11 +72,70 @@ export async function getHealth(): Promise<Health | null> {
 }
 
 /** The signed-in user, or null if signed out (or the API is unreachable). */
-export async function getCurrentUser(): Promise<User | null> {
+export function getCurrentUser(): Promise<User | null> {
+  return getJson<User>("/auth/me");
+}
+
+// --- Chat access ---------------------------------------------------------------
+
+// Mirrors ChatAccessOut in backend/app/schemas/chat.py.
+export type ChatAccess = {
+  allowed: boolean;
+  reason: "no_grant" | "budget_exhausted" | null;
+  mode: "invite_only" | "open";
+  daily_token_limit: number;
+  tokens_used_today: number;
+  tokens_remaining: number;
+  resets_at: string;
+  grant_expires_at: string | null;
+};
+
+// Mirrors AccessRequestOut in backend/app/schemas/access.py.
+export type AccessRequest = {
+  id: string;
+  email: string;
+  message: string;
+  status: "pending" | "approved" | "denied";
+  created_at: string;
+  decided_at: string | null;
+};
+
+// Mirrors GrantOut in backend/app/schemas/access.py.
+export type Grant = {
+  id: string;
+  user_id: string;
+  user_email: string;
+  note: string;
+  /** The grant's own limit; null means it follows the default. */
+  daily_token_limit: number | null;
+  effective_daily_token_limit: number;
+  tokens_used_today: number;
+  expires_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+};
+
+/** GET a JSON endpoint as the current visitor; null on any error status. */
+async function getJson<T>(path: string): Promise<T | null> {
   try {
-    const res = await apiFetch("/auth/me");
-    return res.ok ? ((await res.json()) as User) : null;
+    const res = await apiFetch(path);
+    return res.ok ? ((await res.json()) as T) : null;
   } catch {
     return null;
   }
+}
+
+/** The visitor's chat access and today's usage, or null if signed out. */
+export function getChatAccess(): Promise<ChatAccess | null> {
+  return getJson<ChatAccess>("/chat/access");
+}
+
+/** Pending access requests (admins only; null otherwise). */
+export function getPendingAccessRequests(): Promise<AccessRequest[] | null> {
+  return getJson<AccessRequest[]>("/admin/access-requests");
+}
+
+/** Active grants with today's usage (admins only; null otherwise). */
+export function getActiveGrants(): Promise<Grant[] | null> {
+  return getJson<Grant[]>("/admin/grants");
 }

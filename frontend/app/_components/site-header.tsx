@@ -6,8 +6,9 @@
 import Link from "next/link";
 import { Suspense } from "react";
 
-import { getCurrentUser } from "@/lib/api";
+import { type ChatAccess, getChatAccess, getCurrentUser } from "@/lib/api";
 import { logout } from "@/lib/auth-actions";
+import { formatTokens } from "@/lib/format";
 
 export function SiteHeader() {
   return (
@@ -25,7 +26,8 @@ export function SiteHeader() {
 }
 
 async function UserMenu() {
-  const user = await getCurrentUser();
+  // Both requests start at once rather than one after the other.
+  const [user, chat] = await Promise.all([getCurrentUser(), getChatAccess()]);
 
   if (!user) {
     return (
@@ -37,6 +39,12 @@ async function UserMenu() {
 
   return (
     <div className="flex items-center gap-4 text-sm">
+      {chat && <ChatBadge chat={chat} />}
+      {user.is_admin && (
+        <Link href="/admin" className="underline-offset-4 hover:underline">
+          Admin
+        </Link>
+      )}
       <span className="text-neutral-600 dark:text-neutral-400">{user.email}</span>
       {/* A plain form posting to a Server Action: works even before any
           JavaScript has loaded. */}
@@ -46,5 +54,32 @@ async function UserMenu() {
         </button>
       </form>
     </div>
+  );
+}
+
+/** Chat availability: tokens left today, or why chat is unavailable. */
+function ChatBadge({ chat }: { chat: ChatAccess }) {
+  if (chat.reason === "no_grant") {
+    return (
+      <Link href="/request-access" className="underline-offset-4 hover:underline">
+        Request chat access
+      </Link>
+    );
+  }
+
+  const exhausted = chat.reason === "budget_exhausted";
+  return (
+    <span
+      title={`${chat.tokens_used_today.toLocaleString("en")} of ${chat.daily_token_limit.toLocaleString("en")} tokens used today. Resets at midnight UTC.`}
+      className={`rounded-full border px-2 py-0.5 ${
+        exhausted
+          ? "border-amber-400 text-amber-700 dark:text-amber-400"
+          : "border-neutral-300 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
+      }`}
+    >
+      {exhausted
+        ? "Chat limit reached today"
+        : `Chat: ${formatTokens(chat.tokens_remaining)} tokens left`}
+    </span>
   );
 }
