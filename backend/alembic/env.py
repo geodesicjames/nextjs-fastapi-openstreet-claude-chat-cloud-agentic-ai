@@ -75,7 +75,16 @@ def do_run_migrations(connection: Connection) -> None:
 async def run_async_migrations() -> None:
     # Alembic's migration API is synchronous; `run_sync` bridges our async
     # engine to it.
-    engine = create_async_engine(DATABASE_URL, poolclass=pool.NullPool)
+    #
+    # search_path=public: the postgis/postgis image adds its `tiger` and
+    # `topology` schemas to the default search path, which makes their ~36
+    # tables look like ours to autogenerate (and it proposes dropping them).
+    # PostGIS itself and all our tables live in `public`.
+    engine = create_async_engine(
+        DATABASE_URL,
+        poolclass=pool.NullPool,
+        connect_args={"server_settings": {"search_path": "public"}},
+    )
 
     async with engine.connect() as connection:
         await connection.run_sync(do_run_migrations)

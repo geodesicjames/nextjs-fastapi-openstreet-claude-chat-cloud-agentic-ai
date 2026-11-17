@@ -52,8 +52,14 @@ docker-compose.yml
 - FastAPI is the source of truth for data, auth, and all LLM calls. Next.js
   calls FastAPI (from Server Components or the browser) and never talks to
   Anthropic directly.
-- Auth is owned by FastAPI (JWT in an httpOnly cookie). Magic-link login is
-  planned so invited recruiters never need a password.
+- Auth is owned by FastAPI: magic-link login (no passwords) and server-side
+  sessions. The httpOnly cookie holds a random token; the DB stores only its
+  SHA-256 hash, so logout/revocation is immediate. (Chosen over JWTs, which
+  cannot be revoked without a server-side denylist.)
+- The browser talks only to Next.js (same origin, no CORS). Server Components
+  and Server Actions call FastAPI server-side via `API_URL`, forwarding the
+  session cookie; FastAPI's Set-Cookie headers are relayed back to the browser.
+  FastAPI has no CORS middleware.
 - Use `async def` only with async libraries; never call blocking I/O inside
   `async def` endpoints.
 - Separate input/output schemas; always set `response_model` / return types so

@@ -9,7 +9,7 @@ pydantic-settings plays the role of Django's settings.py, with two differences:
 
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn
+from pydantic import PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -29,9 +29,20 @@ class Settings(BaseSettings):
     # postgresql+asyncpg://app:app@localhost:5432/app
     database_url: PostgresDsn
 
-    # Origins allowed to call the API from a browser. Server-side calls from
-    # Next.js Server Components are not subject to CORS.
-    cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:3000"])
+    # --- Auth ---------------------------------------------------------------
+    # Public URL of the Next.js app; magic links point at its /auth/verify page.
+    frontend_url: str = "http://localhost:3000"
+    login_link_lifetime_minutes: int = 30
+    # At most this many links per email address per hour; extra requests are
+    # silently dropped (the response is the same, so it reveals nothing).
+    login_link_max_per_hour: int = 5
+    session_lifetime_days: int = 30
+    session_cookie_name: str = "session"
+
+    @property
+    def cookie_secure(self) -> bool:
+        """Send the cookie over HTTPS only, everywhere except local dev."""
+        return self.environment != "development"
 
 
 @lru_cache

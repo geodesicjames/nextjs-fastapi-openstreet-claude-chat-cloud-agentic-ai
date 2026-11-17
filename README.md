@@ -4,14 +4,16 @@ A map-based "ask about places" web app. Browse an OpenStreetMap-based map, searc
 for places, and (with invited access) chat with Claude, which uses tools to search
 places, compute routes and, eventually, plan multi-step trips as an agent.
 
-> **Status:** Phase 1, project skeleton. The stack runs end-to-end and the home
-> page reports live API, database and PostGIS status. Maps, auth and chat come next.
+> **Status:** Phase 1, foundation. The stack runs end-to-end, the home page reports
+> live API, database and PostGIS status, and users can sign in with a magic link.
+> Maps and chat come next.
 
 ## Architecture
 
 ```
- Browser ──► Next.js (App Router, :3000)
-                │  Server Components call the API server-side
+ Browser ──► Next.js (App Router, :3000)      same origin: no CORS
+                │  Server Components / Server Actions call the API
+                │  server-side, forwarding the session cookie
                 ▼
              FastAPI (:8000) ──► Postgres + PostGIS (:5432)
                 │
@@ -19,7 +21,7 @@ places, compute routes and, eventually, plan multi-step trips as an agent.
 ```
 
 FastAPI owns all data, auth and LLM calls. Next.js never talks to Anthropic or
-the database directly.
+the database directly, and the browser never talks to FastAPI directly.
 
 | Layer    | Tech                                                                 |
 | -------- | -------------------------------------------------------------------- |
@@ -37,7 +39,8 @@ backend/
     main.py        app factory, middleware, router registration
     config.py      typed settings from env vars (pydantic-settings)
     db.py          async engine + session factory
-    deps.py        shared dependencies (DB session; later current user, chat access)
+    deps.py        shared dependencies (DB session, current user; later chat access)
+    security.py    random token generation and hashing
     models/        SQLAlchemy models
     schemas/       Pydantic request/response schemas
     routers/       API endpoints (APIRouter)
@@ -46,7 +49,8 @@ backend/
   tests/
 frontend/
   app/             routes (App Router)
-  lib/api.ts       server-only API client
+  lib/api.ts       server-only API client (forwards the session cookie)
+  lib/auth-actions.ts  Server Actions for sign-in and sign-out
 docker-compose.yml
 ```
 
@@ -70,6 +74,19 @@ docker compose up --build
 - API: http://localhost:8000/health, with interactive docs at http://localhost:8000/docs.
 
 Migrations run automatically when the backend container starts.
+
+### Signing in locally
+
+Sign-in uses a magic link, with no passwords. In development, emails are not
+sent. The link is printed to the backend log instead:
+
+1. Go to http://localhost:3000/login and enter any email address.
+2. Find the link: `docker compose logs backend | grep -A4 "sign-in link"`
+3. Open it and press **Sign in**.
+
+Links expire after 30 minutes and work once. Sessions last 30 days. Both
+values are settings in `backend/app/config.py`, overridable by environment
+variables (`LOGIN_LINK_LIFETIME_MINUTES`, `SESSION_LIFETIME_DAYS`).
 
 ### Git hooks (once per clone)
 
@@ -124,6 +141,13 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **`/health` checks the DB and PostGIS** | One endpoint serves the status page, the container healthcheck and a smoke test. It returns 503 when the DB is down. |
 | **Initial migration enables PostGIS** | The Docker image enables it already, but managed Postgres (e.g. RDS) doesn't. The migration keeps the schema reproducible. |
 | **Tests use a real PostGIS database** | Spatial behaviour can't be meaningfully faked with SQLite or mocks. |
-| **Server Components fetch via a `server-only` module** | `API_URL` and (later) auth cookies never reach browser JavaScript. |
+| **Server Components fetch via a `server-only` module** | `API_URL` and the session cookie never reach browser JavaScript. |
+| **Magic-link sign-in, no passwords** | Invited users (e.g. recruiters) never need to create a password, and there are no password hashes to protect. |
+| **Server-side sessions, not JWTs** | The cookie holds a random token and the DB stores only its SHA-256 hash. Sign-out and revocation take effect immediately, as with Django's DB sessions. A JWT can't be revoked before it expires without a server-side denylist. |
+| **Browser talks only to Next.js** | The session cookie belongs to the frontend's origin and Next.js forwards it to FastAPI server-side. No CORS, no cross-site cookies, and FastAPI can live on a private network in production. |
+| **Sign-in link needs a button press** | Email security scanners open links in advance. If a GET request signed you in, a scanner could use up the single-use token first. |
+| **Identical response for any email** | `POST /auth/login-link` always returns 202 with the same body, so it can't be used to find out who has an account. It is also rate-limited per address. |
+| **Alembic connects with `search_path=public`** | The `postgis/postgis` image puts its `tiger` and `topology` schemas on the search path, and autogenerate would otherwise try to drop their tables. |
+| **Tests roll back a transaction** | Each test runs in a transaction that is rolled back afterwards, like Django's `TestCase`, so tests are isolated and leave the DB clean. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |
