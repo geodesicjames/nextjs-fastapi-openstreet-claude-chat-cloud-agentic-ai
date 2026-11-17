@@ -45,6 +45,7 @@ os.environ["DATABASE_URL"] = TEST_DATABASE_URL.render_as_string(hide_password=Fa
 get_settings.cache_clear()
 
 import pytest  # noqa: E402
+from fastapi import FastAPI  # noqa: E402
 from httpx import ASGITransport, AsyncClient  # noqa: E402
 from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
 
@@ -135,13 +136,11 @@ def email_outbox() -> FakeEmailSender:
 
 
 @pytest.fixture
-async def client(db: AsyncSession, email_outbox: FakeEmailSender) -> AsyncIterator[AsyncClient]:
-    """An HTTP client that calls the app in-process.
+def app(db: AsyncSession, email_outbox: FakeEmailSender) -> FastAPI:
+    """A fresh app wired to the test transaction and the fake email sender.
 
-    ASGITransport sends requests straight to the ASGI app without opening a
-    socket, much like Django's test Client. The base_url is arbitrary.
-    Dependency overrides point the app at the test transaction and the fake
-    email sender.
+    Tests can add more overrides (e.g. settings) or test-only routes to it
+    before making requests.
     """
     app = create_app()
 
@@ -150,6 +149,15 @@ async def client(db: AsyncSession, email_outbox: FakeEmailSender) -> AsyncIterat
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_email_sender] = lambda: email_outbox
+    return app
 
+
+@pytest.fixture
+async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
+    """An HTTP client that calls the app in-process.
+
+    ASGITransport sends requests straight to the ASGI app without opening a
+    socket, much like Django's test Client. The base_url is arbitrary.
+    """
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
