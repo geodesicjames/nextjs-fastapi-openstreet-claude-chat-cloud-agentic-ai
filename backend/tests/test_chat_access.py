@@ -19,8 +19,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.deps import ChatAccess
 from app.models import ChatGrant, LlmUsage, User
-from app.services import auth as auth_service
 from app.services.chat_access import make_admin, record_usage, start_of_day
+from tests.factories import grant, signed_in_user
 
 GUARDED = "/test/guarded"
 DEFAULT_LIMIT = 50_000
@@ -42,26 +42,6 @@ def use_settings(app: FastAPI) -> Callable[..., None]:
         app.dependency_overrides[get_settings] = lambda: settings
 
     return apply
-
-
-async def signed_in_user(
-    db: AsyncSession, client: AsyncClient, email: str = "ada@example.com"
-) -> User:
-    """Create a user and give `client` their session cookie (skips the email flow)."""
-    user = User(email=email)
-    db.add(user)
-    await db.flush()
-    settings = get_settings()
-    token = await auth_service.create_session(db, settings, user)
-    client.cookies.set(settings.session_cookie_name, token)
-    return user
-
-
-async def grant(db: AsyncSession, user: User, **fields: object) -> ChatGrant:
-    g = ChatGrant(user_id=user.id, **fields)
-    db.add(g)
-    await db.commit()
-    return g
 
 
 async def use_tokens(db: AsyncSession, user: User, tokens: int, at: datetime | None = None) -> None:

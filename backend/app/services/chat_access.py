@@ -132,32 +132,75 @@ async def record_usage(
     return usage
 
 
-async def make_admin(db: AsyncSession, email: str) -> tuple[User, ChatGrant]:
-    """Make `email` an admin with an active chat grant (`createsuperuser`).
+class GrantConflictError(Exception):
+    """The user already has an active grant; edit that one instead."""
 
-    Creates the user if they have never signed in. Safe to run twice.
+
+async def get_or_create_user(db: AsyncSession, email: str) -> User:
+    """Find a user by email, creating them if needed. The caller commits.
+
+    Approving someone who has never signed in creates their account up front,
+    so the grant has a user to point at. Their first sign-in then finds it.
     """
     email = normalize_email(email)
-    now = _now()
     user = await db.scalar(select(User).where(User.email == email))
     if user is None:
         user = User(email=email)
         db.add(user)
         await db.flush()  # assigns user.id without committing
-    user.is_admin = True
+    return user
 
+
+async def create_grant(
+    db: AsyncSession,
+    *,
+    user: User,
+    granted_by: User | None,
+    note: str = "",
+    daily_token_limit: int | None = None,
+    expires_at: datetime | None = None,
+) -> ChatGrant:
+    """Add a grant for `user`. The caller commits.
+
+    Raises GrantConflictError if the user already has an active grant.
+    """
+    now = _now()
     # The unique index counts expired-but-unrevoked grants as active, so an
     # expired grant has to be revoked before a new one can be added.
-    grant = await db.scalar(
+    existing = await db.scalar(
         select(ChatGrant).where(ChatGrant.user_id == user.id, ChatGrant.revoked_at.is_(None))
     )
-    if grant is not None and grant.expires_at is not None and grant.expires_at <= now:
-        grant.revoked_at = now
+    if existing is not None:
+        if existing.expires_at is None or existing.expires_at > now:
+            raise GrantConflictError
+        existing.revoked_at = now
         await db.flush()
-        grant = None
+
+    # Pass the User object, not just user_id, so `grant.user` is already
+    # loaded: async SQLAlchemy can't lazy-load it on first access later.
+    grant = ChatGrant(
+        user=user,
+        granted_by_id=granted_by.id if granted_by else None,
+        note=note,
+        daily_token_limit=daily_token_limit,
+        expires_at=expires_at,
+    )
+    db.add(grant)
+    await db.flush()
+    return grant
+
+
+async def make_admin(db: AsyncSession, email: str) -> tuple[User, ChatGrant]:
+    """Make `email` an admin with an active chat grant (`createsuperuser`).
+
+    Creates the user if they have never signed in. Safe to run twice.
+    """
+    user = await get_or_create_user(db, email)
+    user.is_admin = True
+
+    grant = await get_active_grant(db, user, _now())
     if grant is None:
-        grant = ChatGrant(user_id=user.id, granted_by_id=user.id, note="Owner (make-admin)")
-        db.add(grant)
+        grant = await create_grant(db, user=user, granted_by=user, note="Owner (make-admin)")
 
     await db.commit()
     return user, grant

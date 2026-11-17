@@ -11,7 +11,7 @@ import logging
 
 from fastapi import FastAPI
 
-from app.routers import auth, chat, health
+from app.routers import access_requests, admin, auth, chat, health
 
 
 def create_app() -> FastAPI:
@@ -28,6 +28,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(chat.router)
+    app.include_router(access_requests.router)
+    app.include_router(admin.router)
 
     return app
 

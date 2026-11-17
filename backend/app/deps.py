@@ -69,6 +69,20 @@ OptionalUser = Annotated[User | None, Depends(get_optional_user)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
+async def require_admin(user: CurrentUser) -> User:
+    """The signed-in user if they are an admin; 401 or 403 otherwise.
+
+    Like Django's `@staff_member_required`. Admins are made with
+    `python -m app.cli make-admin`.
+    """
+    if not user.is_admin:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "Admins only.")
+    return user
+
+
+AdminUser = Annotated[User, Depends(require_admin)]
+
+
 async def require_chat_access(
     db: DbSession,
     user: CurrentUser,

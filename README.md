@@ -103,6 +103,18 @@ midnight UTC). A grant with no limit of its own uses `CHAT_DEFAULT_DAILY_TOKENS`
 (50,000). Setting `CHAT_MODE=open` lets every signed-in user chat with the
 default budget. `GET /chat/access` reports your status and today's usage.
 
+How someone gets access:
+
+1. They submit the request form (`POST /access-requests`). Every admin gets an email.
+2. An admin approves or denies it (`/admin/access-requests/{id}/approve` or
+   `/deny`). Approving creates their account if needed, creates a grant with an
+   optional daily limit, expiry and note, and emails them a sign-in link.
+3. Admins can edit a grant (`PATCH /admin/grants/{id}`) or revoke it
+   (`POST /admin/grants/{id}/revoke`). Edits take effect on the user's next request.
+
+Until the admin page exists, these are easiest to try from the interactive API
+docs at http://localhost:8000/docs (sign in there first via `/auth/verify`).
+
 ### Git hooks (once per clone)
 
 ```bash
@@ -169,6 +181,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Tests roll back a transaction** | Each test runs in a transaction that is rolled back afterwards, like Django's `TestCase`, so tests are isolated and leave the DB clean. |
 | **Chat gated by a single dependency** | Every chat and agent route depends on `require_chat_access`, which returns 401 (not signed in), 403 (no active grant) or 429 with `Retry-After` (daily budget used up). One place to audit, and opening chat to everyone is just `CHAT_MODE=open`. |
 | **Token budget summed from a usage ledger** | Every Claude call writes a row to `llm_usage` (tokens and estimated cost). The daily budget is the sum of today's rows, and the same table will feed the cost dashboard. Budgets are checked before each call, so the most a call can go over is its `max_tokens`. |
+| **`PATCH` sends only the fields that change** | The handler uses `model_dump(exclude_unset=True)`, so `{"daily_token_limit": null}` (go back to the default) differs from leaving the field out (keep it as it is). |
+| **Approval email includes a `/login` fallback** | Sign-in links expire after 30 minutes, but an approval email may not be read for days. |
 | **One active grant per user, enforced by Postgres** | A partial unique index (`WHERE revoked_at IS NULL`) rather than an app-level check, so two simultaneous approvals can't both succeed. Revoked grants are kept as history. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |
