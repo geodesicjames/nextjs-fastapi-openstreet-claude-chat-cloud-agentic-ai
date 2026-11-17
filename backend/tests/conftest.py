@@ -5,22 +5,88 @@ the point of most backend tests here is the SQL and spatial behaviour.
 Locally that is the Docker Compose `db` service; in CI it is a service
 container.
 
+Like Django, tests never touch the database named in DATABASE_URL. They use
+a sibling database with "_test" appended (app -> app_test), which is created
+and migrated at the start of the run, so data from clicking around the dev app
+can't leak into tests (or vice versa).
+
 Each test runs inside a transaction that is rolled back afterwards, like
-Django's TestCase, so tests never see each other's data and leave the
-database clean.
+Django's TestCase, so tests never see each other's data and leave the test
+database empty.
 """
 
+import asyncio
+import os
 from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
+from pathlib import Path
 
-import pytest
-from httpx import ASGITransport, AsyncClient
-from sqlalchemy.ext.asyncio import AsyncSession
+from alembic.config import Config
+from sqlalchemy import URL, make_url, text
+from sqlalchemy.ext.asyncio import create_async_engine
 
-from app.db import engine
-from app.deps import get_db
-from app.main import create_app
-from app.services.email import get_email_sender
+from alembic import command
+from app.config import get_settings
+
+
+def _test_database_url() -> URL:
+    url = make_url(str(get_settings().database_url))
+    if url.database is None:
+        raise RuntimeError("DATABASE_URL must name a database")
+    return url.set(database=f"{url.database}_test")
+
+
+# Point the app at the test database *before* anything imports app.db, which
+# builds its engine from settings at import time. Changing the env var and
+# clearing the settings cache is the pydantic-settings equivalent of Django
+# swapping in TEST_NAME.
+TEST_DATABASE_URL = _test_database_url()
+os.environ["DATABASE_URL"] = TEST_DATABASE_URL.render_as_string(hide_password=False)
+get_settings.cache_clear()
+
+import pytest  # noqa: E402
+from httpx import ASGITransport, AsyncClient  # noqa: E402
+from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+
+from app.db import engine  # noqa: E402
+from app.deps import get_db  # noqa: E402
+from app.main import create_app  # noqa: E402
+from app.services.email import get_email_sender  # noqa: E402
+
+
+async def _create_test_database() -> None:
+    """CREATE DATABASE <name>_test if it doesn't exist yet.
+
+    CREATE DATABASE can't run inside a transaction, so this connects to the
+    server's built-in `postgres` database in autocommit mode.
+    """
+    name = TEST_DATABASE_URL.database
+    assert name is not None and name.endswith("_test"), name  # never touch a real DB
+    admin = create_async_engine(
+        TEST_DATABASE_URL.set(database="postgres"), isolation_level="AUTOCOMMIT"
+    )
+    try:
+        async with admin.connect() as conn:
+            exists = await conn.scalar(
+                text("SELECT 1 FROM pg_database WHERE datname = :name"), {"name": name}
+            )
+            if not exists:
+                await conn.execute(text(f'CREATE DATABASE "{name}"'))
+    finally:
+        await admin.dispose()
+
+
+def pytest_sessionstart(session: pytest.Session) -> None:
+    """Create the test database if needed and migrate it to head.
+
+    The database is reused between runs (like Django's --keepdb); running the
+    real migrations each time keeps its schema in step with alembic/versions.
+    This hook is synchronous and runs before pytest-asyncio starts its event
+    loop, so asyncio.run (here and inside alembic/env.py) is safe.
+    """
+    asyncio.run(_create_test_database())
+    alembic_cfg = Config(str(Path(__file__).parents[1] / "alembic.ini"))
+    command.upgrade(alembic_cfg, "head")
 
 
 @dataclass

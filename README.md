@@ -99,6 +99,9 @@ Every commit is then checked for secrets (gitleaks) and linted and formatted (ru
 ### Backend commands
 
 Run from `backend/`. The tests need the database, so start it with `docker compose up -d db`.
+Like Django, they never use the database in `DATABASE_URL` directly: they run against a
+sibling `<name>_test` database (e.g. `app_test`), which pytest creates and migrates
+automatically, so your dev data can't affect test results.
 
 ```bash
 uv sync                                       # install deps into .venv
@@ -127,7 +130,7 @@ pnpm build
 
 GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `main`:
 
-- **Backend:** ruff lint and format check, pyright, Alembic migrations, and pytest against a PostGIS service container
+- **Backend:** ruff lint and format check, pyright, Alembic migrations, and pytest against a PostGIS service container (in its own `app_test` database)
 - **Frontend:** Prettier check, ESLint, TypeScript, and `next build`
 - **Secrets:** gitleaks over the full git history
 
