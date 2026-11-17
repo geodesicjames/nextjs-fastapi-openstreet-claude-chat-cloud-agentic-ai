@@ -8,8 +8,9 @@ pydantic-settings plays the role of Django's settings.py, with two differences:
 """
 
 from functools import lru_cache
+from typing import Literal
 
-from pydantic import PostgresDsn
+from pydantic import Field, PostgresDsn
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -38,6 +39,14 @@ class Settings(BaseSettings):
     login_link_max_per_hour: int = 5
     session_lifetime_days: int = 30
     session_cookie_name: str = "session"
+
+    # --- Chat access ----------------------------------------------------------
+    # invite_only: chat needs an active ChatGrant. open: any signed-in user can
+    # chat, so opening up later is a config change rather than a code change.
+    chat_mode: Literal["invite_only", "open"] = "invite_only"
+    # Tokens (input + output) per user per UTC day, for grants without their
+    # own limit and for everyone in open mode.
+    chat_default_daily_tokens: int = Field(default=50_000, gt=0)
 
     @property
     def cookie_secure(self) -> bool:

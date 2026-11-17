@@ -39,7 +39,8 @@ backend/
     main.py        app factory, middleware, router registration
     config.py      typed settings from env vars (pydantic-settings)
     db.py          async engine + session factory
-    deps.py        shared dependencies (DB session, current user; later chat access)
+    deps.py        shared dependencies (DB session, current user, chat access)
+    cli.py         management commands (`python -m app.cli make-admin ...`)
     security.py    random token generation and hashing
     models/        SQLAlchemy models
     schemas/       Pydantic request/response schemas
@@ -87,6 +88,20 @@ sent. The link is printed to the backend log instead:
 Links expire after 30 minutes and work once. Sessions last 30 days. Both
 values are settings in `backend/app/config.py`, overridable by environment
 variables (`LOGIN_LINK_LIFETIME_MINUTES`, `SESSION_LIFETIME_DAYS`).
+
+### Chat access (invite-only)
+
+Anyone can sign in, but chat needs a **chat grant**. To give yourself admin
+rights and a grant (the equivalent of Django's `createsuperuser`):
+
+```bash
+docker compose exec backend python -m app.cli make-admin you@example.com
+```
+
+Each grant has a daily token budget (input + output tokens, resetting at
+midnight UTC). A grant with no limit of its own uses `CHAT_DEFAULT_DAILY_TOKENS`
+(50,000). Setting `CHAT_MODE=open` lets every signed-in user chat with the
+default budget. `GET /chat/access` reports your status and today's usage.
 
 ### Git hooks (once per clone)
 
@@ -152,5 +167,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Identical response for any email** | `POST /auth/login-link` always returns 202 with the same body, so it can't be used to find out who has an account. It is also rate-limited per address. |
 | **Alembic connects with `search_path=public`** | The `postgis/postgis` image puts its `tiger` and `topology` schemas on the search path, and autogenerate would otherwise try to drop their tables. |
 | **Tests roll back a transaction** | Each test runs in a transaction that is rolled back afterwards, like Django's `TestCase`, so tests are isolated and leave the DB clean. |
+| **Chat gated by a single dependency** | Every chat and agent route depends on `require_chat_access`, which returns 401 (not signed in), 403 (no active grant) or 429 with `Retry-After` (daily budget used up). One place to audit, and opening chat to everyone is just `CHAT_MODE=open`. |
+| **Token budget summed from a usage ledger** | Every Claude call writes a row to `llm_usage` (tokens and estimated cost). The daily budget is the sum of today's rows, and the same table will feed the cost dashboard. Budgets are checked before each call, so the most a call can go over is its `max_tokens`. |
+| **One active grant per user, enforced by Postgres** | A partial unique index (`WHERE revoked_at IS NULL`) rather than an app-level check, so two simultaneous approvals can't both succeed. Revoked grants are kept as history. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |
