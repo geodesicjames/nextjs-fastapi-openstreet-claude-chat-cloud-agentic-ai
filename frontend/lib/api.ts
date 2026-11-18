@@ -178,3 +178,64 @@ export async function forwardToApi(request: Request, path: string): Promise<Resp
   if (retryAfter) out.set("retry-after", retryAfter);
   return new Response(res.body, { status: res.status, headers: out });
 }
+
+/**
+ * Forward a browser request to FastAPI *as the signed-in visitor* and stream
+ * the answer back unchanged (status, body, and the headers that matter).
+ *
+ * Used by the chat and saved-places route handlers. Unlike forwardToApi it
+ * passes the session cookie and the request body, and it streams the
+ * response, so server-sent events from the chat endpoint reach the browser
+ * as they are produced.
+ *
+ * For methods that change data it also checks the Origin header: browsers
+ * always send it on cross-site requests, so a mismatch means another site is
+ * trying to use the visitor's session (CSRF). The SameSite=Lax cookie already
+ * blocks that; this is a second line of defence.
+ */
+export async function proxyToApi(
+  request: Request,
+  path: string,
+  { timeoutMs = 20_000 }: { timeoutMs?: number } = {},
+): Promise<Response> {
+  const method = request.method.toUpperCase();
+  if (!["GET", "HEAD"].includes(method)) {
+    const origin = request.headers.get("origin");
+    const host = request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+    if (origin && new URL(origin).host !== host) {
+      return Response.json({ detail: "Cross-site request refused." }, { status: 403 });
+    }
+  }
+
+  const headers = new Headers({ accept: request.headers.get("accept") ?? "application/json" });
+  const cookie = request.headers.get("cookie");
+  if (cookie) headers.set("cookie", cookie);
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+  const body = ["GET", "HEAD"].includes(method) ? undefined : await request.text();
+  if (body) headers.set("content-type", "application/json");
+
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      // Stop the upstream request if the browser goes away, or after the timeout.
+      signal: AbortSignal.any([request.signal, AbortSignal.timeout(timeoutMs)]),
+    });
+  } catch (error) {
+    console.error(`proxyToApi ${method} ${path}:`, error);
+    return Response.json({ detail: "The service is unavailable." }, { status: 502 });
+  }
+
+  const out = new Headers();
+  for (const name of ["content-type", "retry-after", "cache-control"]) {
+    const value = res.headers.get(name);
+    if (value) out.set(name, value);
+  }
+  // Ask any proxy in front of Next.js not to buffer a streamed response.
+  if (out.get("content-type")?.startsWith("text/event-stream")) out.set("x-accel-buffering", "no");
+  return new Response(res.status === 204 ? null : res.body, { status: res.status, headers: out });
+}

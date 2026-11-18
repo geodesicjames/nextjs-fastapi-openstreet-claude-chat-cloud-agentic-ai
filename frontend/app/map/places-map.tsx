@@ -25,6 +25,17 @@ import {
   type PlaceDetail,
   type PlaceFeature,
 } from "@/lib/map";
+import type { ChatPlace } from "@/lib/chat";
+
+import { ChatPanel } from "./chat-panel";
+import { SavedPanel } from "./saved-panel";
+
+type Tab = "explore" | "ask" | "saved";
+const TABS: [Tab, string][] = [
+  ["explore", "Explore"],
+  ["ask", "Ask"],
+  ["saved", "Saved"],
+];
 
 // Somewhere with data to show on first load; the theme will decide later.
 const START = { center: [-3.19, 55.95] as [number, number], zoom: 14 };
@@ -68,6 +79,9 @@ export function PlacesMap() {
   const [places, setPlaces] = useState<PlaceFeature[]>([]);
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [selected, setSelected] = useState<PlaceDetail | null>(null);
+  const [tab, setTab] = useState<Tab>("explore");
+  // Places the assistant found, shown as their own, larger markers.
+  const [chatPlaces, setChatPlaces] = useState<ChatPlace[]>([]);
 
   // These callbacks read state through refs, so they never go stale and can
   // be registered once as MapLibre event listeners.
@@ -172,6 +186,18 @@ export function PlacesMap() {
             "circle-stroke-color": "#ffffff",
           },
         });
+        map.addSource("chat-places", { type: "geojson", data: EMPTY });
+        map.addLayer({
+          id: "chat-places",
+          type: "circle",
+          source: "chat-places",
+          paint: {
+            "circle-radius": 8,
+            "circle-color": CATEGORY_COLOR,
+            "circle-stroke-width": 3,
+            "circle-stroke-color": "#171717",
+          },
+        });
         map.addLayer({
           id: "places-selected",
           type: "circle",
@@ -188,8 +214,14 @@ export function PlacesMap() {
           const id = event.features?.[0]?.properties?.id;
           if (typeof id === "string") void selectPlace(id);
         });
-        map.on("mouseenter", "places", () => (map.getCanvas().style.cursor = "pointer"));
-        map.on("mouseleave", "places", () => (map.getCanvas().style.cursor = ""));
+        map.on("click", "chat-places", (event) => {
+          const id = event.features?.[0]?.properties?.place_id;
+          if (typeof id === "string") void selectPlace(id);
+        });
+        for (const layer of ["places", "chat-places"]) {
+          map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
+          map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
+        }
         readyRef.current = true;
         scheduleLoad(0);
       });
@@ -217,6 +249,33 @@ export function PlacesMap() {
     });
     map.setFilter("places-selected", ["==", ["get", "id"], selected?.id ?? ""]);
   }, [places, selected]);
+
+  // Show the assistant's places and bring them into view.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !readyRef.current) return;
+    (map.getSource("chat-places") as GeoJSONSource | undefined)?.setData({
+      type: "FeatureCollection",
+      features: chatPlaces.map((p) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [p.lon, p.lat] },
+        properties: { place_id: p.place_id, name: p.name, category: p.category },
+      })),
+    });
+    if (chatPlaces.length === 1) {
+      map.flyTo({
+        center: [chatPlaces[0].lon, chatPlaces[0].lat],
+        zoom: Math.max(map.getZoom(), 16),
+      });
+    } else if (chatPlaces.length > 1) {
+      const lons = chatPlaces.map((p) => p.lon);
+      const lats = chatPlaces.map((p) => p.lat);
+      map.fitBounds([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)], {
+        padding: 60,
+        maxZoom: 16,
+      });
+    }
+  }, [chatPlaces]);
 
   function toggleCategory(id: CategoryId) {
     const next = categories.includes(id) ? categories.filter((c) => c !== id) : [...categories, id];
@@ -248,33 +307,83 @@ export function PlacesMap() {
 
   return (
     <div className="flex flex-1 flex-col md:min-h-0 md:flex-row">
-      <aside className="flex flex-col gap-4 border-b border-neutral-200 p-4 md:w-80 md:shrink-0 md:overflow-y-auto md:border-r md:border-b-0 dark:border-neutral-800">
-        <PlaceSearch onPick={goTo} />
-        <CategoryFilter selected={categories} onToggle={toggleCategory} />
-        <StatusLine status={status} />
+      <aside className="flex flex-col gap-4 border-b border-neutral-200 p-4 md:w-96 md:shrink-0 md:overflow-y-auto md:border-r md:border-b-0 dark:border-neutral-800">
+        <div role="tablist" aria-label="Panel" className="flex gap-1 text-sm">
+          {TABS.map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              id={`tab-${id}`}
+              aria-selected={tab === id}
+              aria-controls={`panel-${id}`}
+              onClick={() => setTab(id)}
+              className={`rounded-md px-3 py-1 ${
+                tab === id
+                  ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                  : "text-neutral-600 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
         {selected && <PlaceCard place={selected} onClose={() => setSelected(null)} />}
-        {places.length > 0 && (
-          <ul className="flex flex-col divide-y divide-neutral-200 text-sm dark:divide-neutral-800">
-            {places.map((feature) => (
-              <li key={feature.id}>
-                <button
-                  type="button"
-                  onClick={() => showPlace(feature)}
-                  className="flex w-full items-center gap-2 py-1.5 text-left hover:underline"
-                >
-                  <CategoryDot category={feature.properties.category} />
-                  <span className="truncate">
-                    {feature.properties.name ?? (
-                      <span className="text-neutral-500">
-                        Unnamed {categorySingular(feature.properties.category)}
-                      </span>
-                    )}
-                  </span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
+
+        {/* Panels stay mounted when hidden, so a conversation survives
+            switching tabs. */}
+        <div
+          role="tabpanel"
+          id="panel-ask"
+          aria-labelledby="tab-ask"
+          hidden={tab !== "ask"}
+          className="flex flex-col gap-4"
+        >
+          <ChatPanel onPlaces={setChatPlaces} />
+        </div>
+        <div role="tabpanel" id="panel-saved" aria-labelledby="tab-saved" hidden={tab !== "saved"}>
+          {tab === "saved" && (
+            <SavedPanel
+              onShow={(place) => {
+                mapRef.current?.flyTo({ center: [place.lon, place.lat], zoom: 16 });
+                void selectPlace(place.place_id);
+              }}
+            />
+          )}
+        </div>
+        <div
+          role="tabpanel"
+          id="panel-explore"
+          aria-labelledby="tab-explore"
+          hidden={tab !== "explore"}
+          className="flex flex-col gap-4"
+        >
+          <PlaceSearch onPick={goTo} />
+          <CategoryFilter selected={categories} onToggle={toggleCategory} />
+          <StatusLine status={status} />
+          {places.length > 0 && (
+            <ul className="flex flex-col divide-y divide-neutral-200 text-sm dark:divide-neutral-800">
+              {places.map((feature) => (
+                <li key={feature.id}>
+                  <button
+                    type="button"
+                    onClick={() => showPlace(feature)}
+                    className="flex w-full items-center gap-2 py-1.5 text-left hover:underline"
+                  >
+                    <CategoryDot category={feature.properties.category} />
+                    <span className="truncate">
+                      {feature.properties.name ?? (
+                        <span className="text-neutral-500">
+                          Unnamed {categorySingular(feature.properties.category)}
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </aside>
       {/* Sized with flexbox, not `absolute inset-0`: MapLibre adds its own
           `position: relative` to the container, which would cancel that out
