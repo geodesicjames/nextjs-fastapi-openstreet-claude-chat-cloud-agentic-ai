@@ -119,6 +119,30 @@ today, or a "Request chat access" link if they have no grant. Admins also see
 an **Admin** link. The underlying endpoints are documented at
 http://localhost:8000/docs.
 
+### Map data
+
+`GET /places?bbox=west,south,east,north&category=cafe` returns places as
+GeoJSON. They come from OpenStreetMap through the
+[Overpass API](https://wiki.openstreetmap.org/wiki/Overpass_API) and are
+cached in PostGIS:
+
+- The world is divided into a fixed grid of cells about 2 km across. The first
+  request for an area fetches its cells from Overpass in one query, for every
+  category at once. Later requests within 30 days (`PLACE_CACHE_DAYS`) are
+  answered from PostGIS alone.
+- The public Overpass server asks apps that use it regularly to stay under
+  about 100 queries and 10 MB a day, in total across all users. The backend
+  counts its calls in `upstream_calls` and stops at `OVERPASS_DAILY_QUERY_BUDGET`
+  (80) or `OVERPASS_DAILY_MB_BUDGET` (8). It runs one query at a time, and
+  backs off exponentially when the server is busy (30 s, doubling to 10 min).
+- When it can't fetch, it still returns what's cached, with
+  `"complete": false` and an `incomplete_reason` (`budget`, `cooldown`,
+  `upstream_error` or `busy`).
+- Set `OSM_CONTACT` in `.env` so the User-Agent identifies you, as the
+  usage policy asks. The main public instance is often at capacity. For
+  development you can point `OVERPASS_URL` at another
+  [public instance](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances).
+
 ### Git hooks (once per clone)
 
 ```bash
@@ -188,5 +212,9 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **`PATCH` sends only the fields that change** | The handler uses `model_dump(exclude_unset=True)`, so `{"daily_token_limit": null}` (go back to the default) differs from leaving the field out (keep it as it is). |
 | **Approval email includes a `/login` fallback** | Sign-in links expire after 30 minutes, but an approval email may not be read for days. |
 | **One active grant per user, enforced by Postgres** | A partial unique index (`WHERE revoked_at IS NULL`) rather than an app-level check, so two simultaneous approvals can't both succeed. Revoked grants are kept as history. |
+| **Places cached by grid cell** | Panning around an area costs at most a few upstream queries, and each cell is fetched once for every category. Cells, rather than exact bboxes, make "have we fetched this?" a simple primary-key lookup. |
+| **Overpass budget kept in the database** | The `upstream_calls` table is shared by every backend process and survives restarts. An in-memory counter would reset on each deploy and count per process. |
+| **Incomplete results instead of errors** | When Overpass is busy or the budget is used up, the map still shows cached places and says why some are missing, rather than failing. |
+| **Rate limits use the real client IP** | Requests reach FastAPI through Next.js, so the visitor's IP is in `X-Forwarded-For`. It's only trusted from `TRUSTED_PROXIES`, and read right to left, so clients can't dodge limits with a fake header. The counters are in memory for now; several backend instances would need Redis. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |

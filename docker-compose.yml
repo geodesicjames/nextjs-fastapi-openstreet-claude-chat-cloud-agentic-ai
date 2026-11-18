@@ -31,6 +31,10 @@ services:
       ENVIRONMENT: development
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}
       FRONTEND_URL: http://localhost:3000
+      # Trust X-Forwarded-For from containers on the Compose network (Next.js),
+      # so per-IP rate limits see the visitor's address. Docker's default
+      # bridge networks are allocated from 172.16.0.0/12.
+      TRUSTED_PROXIES: '["127.0.0.1/32", "172.16.0.0/12"]'
     ports:
       - "8000:8000"
     volumes:

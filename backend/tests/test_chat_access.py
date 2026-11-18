@@ -16,7 +16,6 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import get_settings
 from app.deps import ChatAccess
 from app.models import ChatGrant, LlmUsage, User
 from app.services.chat_access import make_admin, record_usage, start_of_day
@@ -31,17 +30,6 @@ def guarded_route(app: FastAPI) -> None:
     @app.get(GUARDED)
     async def guarded(access: ChatAccess) -> dict[str, int]:
         return {"remaining": access.remaining}
-
-
-@pytest.fixture
-def use_settings(app: FastAPI) -> Callable[..., None]:
-    """Override settings for this test, e.g. use_settings(chat_mode="open")."""
-
-    def apply(**changes: object) -> None:
-        settings = get_settings().model_copy(update=changes)
-        app.dependency_overrides[get_settings] = lambda: settings
-
-    return apply
 
 
 async def use_tokens(db: AsyncSession, user: User, tokens: int, at: datetime | None = None) -> None:

@@ -14,6 +14,7 @@ there is a single source of truth for configuration.
 import asyncio
 from logging.config import fileConfig
 
+from geoalchemy2 import alembic_helpers
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import create_async_engine
@@ -44,7 +45,18 @@ def include_object(
     reflected: bool,
     compare_to: SchemaItem | None,
 ) -> bool:
-    return not (type_ == "table" and name in POSTGIS_TABLES)
+    if type_ == "table" and name in POSTGIS_TABLES:
+        return False
+    # GeoAlchemy2's filter skips the spatial indexes it manages itself.
+    return alembic_helpers.include_object(obj, name, type_, reflected, compare_to)
+
+
+# GeoAlchemy2 helpers so autogenerate renders Geometry columns and creates
+# their spatial (GiST) indexes correctly.
+GEO_OPTIONS = {
+    "process_revision_directives": alembic_helpers.writer,
+    "render_item": alembic_helpers.render_item,
+}
 
 
 def run_migrations_offline() -> None:
@@ -53,6 +65,7 @@ def run_migrations_offline() -> None:
         url=DATABASE_URL,
         target_metadata=target_metadata,
         include_object=include_object,
+        **GEO_OPTIONS,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
     )
@@ -66,6 +79,7 @@ def do_run_migrations(connection: Connection) -> None:
         connection=connection,
         target_metadata=target_metadata,
         include_object=include_object,
+        **GEO_OPTIONS,
     )
 
     with context.begin_transaction():
