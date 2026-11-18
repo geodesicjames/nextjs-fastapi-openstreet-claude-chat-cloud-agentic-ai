@@ -16,33 +16,23 @@ This module enforces all of that:
 It only talks to Overpass. Caching decisions live in app/services/places.py.
 """
 
-import asyncio
 import logging
 import time
 from collections import defaultdict
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import httpx
-from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models import UpstreamCall
 from app.services.categories import CATEGORIES, category_of
-from app.services.chat_access import start_of_day
 from app.services.grid import BBox
+from app.services.upstream import BACKOFF_STATUSES, UpstreamClient, log_call, usage_today
 
 logger = logging.getLogger(__name__)
 
 SERVICE = "overpass"
-COOLDOWN_SECONDS = 30
-MAX_COOLDOWN_SECONDS = 600
-# Statuses that mean "too busy / slow down": 406 and 429 per the usage policy;
-# 502/503/504 are what the server returns when its queue is full ("at
-# capacity", asking clients to back off exponentially).
-BACKOFF_STATUSES = {406, 429, 502, 503, 504}
 
 
 # Why a fetch didn't happen or failed. "busy" is added by the places service.
@@ -69,23 +59,8 @@ class OverpassElement:
 
 
 @dataclass
-class OverpassClient:
+class OverpassClient(UpstreamClient):
     """Process-wide Overpass state. One instance lives on `app.state`."""
-
-    http: httpx.AsyncClient
-    lock: asyncio.Lock = field(default_factory=asyncio.Lock)
-    cooldown_until: float = 0.0  # time.monotonic() value
-    consecutive_failures: int = 0
-
-    def in_cooldown(self) -> bool:
-        return time.monotonic() < self.cooldown_until
-
-    def back_off(self) -> float:
-        """Start a cooldown that doubles with each consecutive failure."""
-        seconds = min(COOLDOWN_SECONDS * 2**self.consecutive_failures, MAX_COOLDOWN_SECONDS)
-        self.consecutive_failures += 1
-        self.cooldown_until = time.monotonic() + seconds
-        return seconds
 
     async def fetch(
         self, db: AsyncSession, settings: Settings, bbox: BBox
@@ -120,15 +95,7 @@ class OverpassClient:
             logger.warning("Overpass request failed: %r; pausing %ss", error, seconds)
             raise OverpassUnavailableError("upstream_error") from error
         finally:
-            db.add(
-                UpstreamCall(
-                    service=SERVICE,
-                    status_code=status,
-                    response_bytes=size,
-                    duration_ms=int((time.monotonic() - started) * 1000),
-                )
-            )
-            await db.commit()
+            await log_call(db, SERVICE, status, size, started)
 
         if status in BACKOFF_STATUSES:
             seconds = self.back_off()
@@ -138,7 +105,7 @@ class OverpassClient:
             logger.warning("Overpass returned %s", status)
             raise OverpassUnavailableError("upstream_error")
 
-        self.consecutive_failures = 0
+        self.succeeded()
         try:
             return parse_response(response.json())
         except (ValueError, KeyError, TypeError) as error:
@@ -148,14 +115,7 @@ class OverpassClient:
 
 async def within_budget(db: AsyncSession, settings: Settings) -> bool:
     """True if today's (UTC) Overpass calls and bytes are under budget."""
-    calls, total_bytes = (
-        await db.execute(
-            select(func.count(), func.coalesce(func.sum(UpstreamCall.response_bytes), 0)).where(
-                UpstreamCall.service == SERVICE,
-                UpstreamCall.created_at >= start_of_day(datetime.now(UTC)),
-            )
-        )
-    ).one()
+    calls, total_bytes = await usage_today(db, SERVICE)
     return (
         calls < settings.overpass_daily_query_budget
         and total_bytes < settings.overpass_daily_mb_budget * 1_000_000

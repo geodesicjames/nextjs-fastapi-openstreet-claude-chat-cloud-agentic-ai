@@ -8,6 +8,8 @@ such as Redis. The interface (a FastAPI dependency) would stay the same.
 Used on a route like this:
 
     @router.get("/places", dependencies=[Depends(RateLimit("places"))])
+
+The limit for scope "places" is settings.places_rate_limit_per_minute.
 """
 
 import time
@@ -77,7 +79,9 @@ class RateLimiter:
 class RateLimit:
     """Dependency: 429 with Retry-After once a client exceeds the limit.
 
-    A class with __call__ so each route can pick its own scope.
+    A class with __call__ so each route can pick its own scope. The limit is
+    read from the `<scope>_rate_limit_per_minute` setting on every request,
+    so tests (and config changes) can adjust it.
     """
 
     def __init__(self, scope: str) -> None:
@@ -88,7 +92,8 @@ class RateLimit:
     ) -> None:
         limiter: RateLimiter = request.app.state.rate_limiter
         key = f"{self.scope}:{client_ip(request, settings)}"
-        retry_after = limiter.hit(key, settings.places_rate_limit_per_minute)
+        limit: int = getattr(settings, f"{self.scope}_rate_limit_per_minute")
+        retry_after = limiter.hit(key, limit)
         if retry_after is not None:
             raise HTTPException(
                 status.HTTP_429_TOO_MANY_REQUESTS,

@@ -147,6 +147,22 @@ cached in PostGIS:
   to change it. The budgets follow the main instance's stricter policy
   whichever you use.
 
+### Place search (geocoding)
+
+`GET /geocode?q=Leith Walk` finds towns, streets and addresses with
+[Nominatim](https://nominatim.openstreetmap.org), following its
+[usage policy](https://operations.osmfoundation.org/policies/nominatim/):
+
+- **At most one request per second** across the whole backend. Searches queue
+  for their turn, and give up as "busy" after 5 seconds.
+- **Every answer is cached for 30 days, including "no results"**. The policy
+  warns that clients repeating the same query may be blocked.
+- **Search on submit, never on each keystroke.** Autocomplete is forbidden.
+  Each IP may make 20 searches a minute.
+- The same exponential backoff as Overpass, a daily safety budget
+  (`NOMINATIM_DAILY_QUERY_BUDGET`, 1000), and older cached results
+  (`"stale": true`) if Nominatim can't be reached.
+
 ### Git hooks (once per clone)
 
 ```bash

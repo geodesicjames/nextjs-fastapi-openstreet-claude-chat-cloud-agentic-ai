@@ -72,9 +72,22 @@ class Settings(BaseSettings):
     # How long fetched places are trusted before a cell is fetched again.
     place_cache_days: int = 30
 
+    # Nominatim (place-name search). Usage policy, which this app follows:
+    # https://operations.osmfoundation.org/policies/nominatim/
+    # At most 1 request per second across the whole app (enforced in code),
+    # results cached, no search-as-you-type.
+    nominatim_url: str = "https://nominatim.openstreetmap.org/search"
+    nominatim_timeout_seconds: int = 10
+    # A backstop against abuse spread across many IPs; the policy itself is
+    # about request rate, and real use should stay far below this.
+    nominatim_daily_query_budget: int = 1000
+    geocode_cache_days: int = 30
+
     # --- Rate limiting ----------------------------------------------------------
     # Requests per minute per client IP on the public map endpoints.
     places_rate_limit_per_minute: int = 60
+    # Searches are typed by hand, so far fewer are needed than map pans.
+    geocode_rate_limit_per_minute: int = 20
     # Peers allowed to tell us the real client IP via X-Forwarded-For (the
     # Next.js server). Anyone else's X-Forwarded-For is ignored, so clients
     # can't dodge rate limits by sending a fake header.

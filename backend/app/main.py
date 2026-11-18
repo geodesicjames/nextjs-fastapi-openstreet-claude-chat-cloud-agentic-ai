@@ -15,7 +15,8 @@ import httpx
 from fastapi import FastAPI
 
 from app.ratelimit import RateLimiter
-from app.routers import access_requests, admin, auth, chat, health, places
+from app.routers import access_requests, admin, auth, chat, geocode, health, places
+from app.services.geocoding import NominatimClient
 from app.services.overpass import OverpassClient
 
 
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     # Built here rather than in lifespan so tests (which don't run lifespan)
     # get them too, fresh for every app.
     app.state.overpass = OverpassClient(http=http)
+    app.state.nominatim = NominatimClient(http=http)
     app.state.rate_limiter = RateLimiter()
 
     # No CORS middleware: browsers never call this API directly. They talk
@@ -52,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(access_requests.router)
     app.include_router(admin.router)
     app.include_router(places.router)
+    app.include_router(geocode.router)
 
     return app
 

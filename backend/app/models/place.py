@@ -6,7 +6,8 @@ the public services' usage policies.
 - `PlaceCell`: which grid cells have been fetched from Overpass, and when.
   This is the cache index: a fresh cell is answered from PostGIS alone.
 - `UpstreamCall`: one row per request we make to an external service, used to
-  enforce the daily Overpass budget (and handy for spotting trouble).
+  enforce the daily budgets (and handy for spotting trouble).
+- `GeocodeResult`: cached Nominatim answers, keyed by normalised search text.
 """
 
 import uuid
@@ -62,3 +63,17 @@ class UpstreamCall(TimestampMixin, Base):
     status_code: Mapped[int | None]
     response_bytes: Mapped[int] = mapped_column(default=0)
     duration_ms: Mapped[int]
+
+
+class GeocodeResult(Base):
+    """Cached Nominatim results for one normalised search string.
+
+    Empty results are cached too: the usage policy warns that clients sending
+    the same query repeatedly may be blocked.
+    """
+
+    __tablename__ = "geocode_cache"
+
+    query: Mapped[str] = mapped_column(String(200), primary_key=True)
+    results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
