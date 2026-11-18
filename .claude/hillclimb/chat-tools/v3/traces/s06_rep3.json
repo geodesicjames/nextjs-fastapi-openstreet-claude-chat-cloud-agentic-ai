@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. For \"how many\", use the total_found number search_places returns, or say \"several\"; don't count a list by hand. When you list only some of the results, say so.\n- Read tags literally and don't extend their meaning: a tag saying a facility exists for one group doesn't mean others are excluded, and a missing tag means the data doesn't say, not \"no\". If you're unsure what a tag means, quote it as written.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Parks near Marchmont for a picnic"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Marchmont, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Marchmont\", \"display_name\": \"Marchmont, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9359813, \"lon\": -3.1991153, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9359813,\n  \"lon\": -3.1991153,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"park\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"646e261b-214b-4962-b49b-a921d2c9b137\", \"name\": \"Bruntsfield Links\", \"category\": \"park\", \"distance_m\": 377, \"lat\": 55.939191, \"lon\": -3.201047}, {\"place_id\": \"81e95ef8-c65a-4c5a-ab31-d67ac868a6ad\", \"name\": null, \"category\": \"park\", \"distance_m\": 454, \"lat\": 55.933751, \"lon\": -3.205218}, {\"place_id\": \"8fd55e2c-f8c8-4dce-826b-195c2dc8680a\", \"name\": null, \"category\": \"park\", \"distance_m\": 466, \"lat\": 55.934363, \"lon\": -3.206024}, {\"place_id\": \"3ed010a4-7f2d-4d16-b5a4-890e37d539f9\", \"name\": null, \"category\": \"park\", \"distance_m\": 756, \"lat\": 55.937876, \"lon\": -3.187458}, {\"place_id\": \"a54c7b95-3225-470d-84fc-f6606e561eff\", \"name\": \"The Meadows\", \"category\": \"park\", \"distance_m\": 845, \"lat\": 55.942351, \"lon\": -3.191727}, {\"place_id\": \"5c6f0e03-326f-4daf-be3a-081a75e8ed8d\", \"name\": null, \"category\": \"park\", \"distance_m\": 889, \"lat\": 55.928525, \"lon\": -3.204246}, {\"place_id\": \"b05b7ca6-e5fa-45d2-8ab0-c80b8f97b782\", \"name\": null, \"category\": \"park\", \"distance_m\": 891, \"lat\": 55.92882, \"lon\": -3.205539}], \"total_found\": 7}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found 7 parks within about 1 km of Marchmont (using the suburb centre). The closest named ones are:\n\n- **Bruntsfield Links**, 377 m\n- **The Meadows**, 845 m\n\nThere are also four unnamed park entries, at 454 m, 466 m, 756 m and 889 m. Another unnamed one is at 891 m. The map data doesn't say whether any of them allow picnics, so check before you go."
+ }
+]
