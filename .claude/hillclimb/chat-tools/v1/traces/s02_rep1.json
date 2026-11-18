@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "I'm at the Grassmarket and desperately need a toilet."
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Grassmarket, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Grassmarket\", \"display_name\": \"Grassmarket, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2LJ, United Kingdom\", \"lat\": 55.9474898, \"lon\": -3.1962363, \"kind\": \"highway:pedestrian\"}, {\"name\": \"Grassmarket\", \"display_name\": \"Grassmarket, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2LJ, United Kingdom\", \"lat\": 55.9473804, \"lon\": -3.1959532, \"kind\": \"highway:tertiary\"}, {\"name\": \"Grassmarket\", \"display_name\": \"Grassmarket, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2HY, United Kingdom\", \"lat\": 55.9470089, \"lon\": -3.1977489, \"kind\": \"highway:unclassified\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9474898,\n  \"lon\": -3.1962363,\n  \"radius_m\": 800,\n  \"categories\": [\n    \"toilets\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"8715f21d-bd30-46b2-99a1-f7266ce7f54a\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 129, \"lat\": 55.948647, \"lon\": -3.196253}, {\"place_id\": \"75712db1-557d-4fb1-b921-f8dcab0df141\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 135, \"lat\": 55.9487, \"lon\": -3.19643}, {\"place_id\": \"6613f30b-f625-4b11-9341-9f3a01ed181b\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 166, \"lat\": 55.948836, \"lon\": -3.195072}, {\"place_id\": \"a8f08430-ab62-46ba-b65a-3a8686b002d7\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 184, \"lat\": 55.948345, \"lon\": -3.198763}, {\"place_id\": \"76478fb6-65d4-408c-af55-605746f323de\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 211, \"lat\": 55.948341, \"lon\": -3.199267}, {\"place_id\": \"08a8da38-57b0-4fd4-bb4e-54fbb9871413\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 353, \"lat\": 55.949021, \"lon\": -3.201195}, {\"place_id\": \"f8d817ed-2ec9-46f3-96ec-67b3d6d0c3bd\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 383, \"lat\": 55.949071, \"lon\": -3.201692}, {\"place_id\": \"070e06b7-6afa-44d6-ad2e-2eea5ecdb48a\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 402, \"lat\": 55.950507, \"lon\": -3.199792}, {\"place_id\": \"f0b45587-f199-4d50-aac3-5788cabc93b7\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 404, \"lat\": 55.951104, \"lon\": -3.195642}, {\"place_id\": \"b1e9efc7-fef8-4b6a-8a5d-5cc890aebd81\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 404, \"lat\": 55.950528, \"lon\": -3.199783}, {\"place_id\": \"9bc556c1-1b49-4379-865a-63c98cd582bf\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 408, \"lat\": 55.950425, \"lon\": -3.200173}, {\"place_id\": \"95f39459-c290-4018-819c-52d5a1323c44\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 412, \"lat\": 55.950445, \"lon\": -3.200229}, {\"place_id\": \"d84132a3-71f8-4959-825e-e6e517ad0bb5\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 415, \"lat\": 55.944733, \"lon\": -3.191733}, {\"place_id\": \"054b1411-414a-4bbb-9bb8-ac2563a3564e\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 424, \"lat\": 55.951289, \"lon\": -3.195683}, {\"place_id\": \"a7efb8a2-e14c-4293-b0f6-7065be1fe13d\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 443, \"lat\": 55.947783, \"lon\": -3.203335}, {\"place_id\": \"8fc92c51-d828-48f2-a84d-376163c2ebe6\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 444, \"lat\": 55.947775, \"lon\": -3.203345}, {\"place_id\": \"017ee70b-befc-4fad-855e-6141cb18158e\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 487, \"lat\": 55.951866, \"lon\": -3.196336}, {\"place_id\": \"0784dd6b-0018-4be3-8250-5e191b04b843\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 561, \"lat\": 55.951176, \"lon\": -3.19009}, {\"place_id\": \"b75725d5-97c6-4dbd-a4f8-fc105f600c8c\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 576, \"lat\": 55.952594, \"lon\": -3.194679}, {\"place_id\": \"89cc9817-bb58-48d7-bb26-139286a26d75\", \"name\": null, \"category\": \"toilets\", \"distance_m\": 622, \"lat\": 55.950116, \"lon\": -3.205064}], \"total_found\": 23}"
+ },
+ {
+  "role": "assistant",
+  "content": "The nearest public toilets I found are about 130 to 185 m from the Grassmarket:\n\n- **Toilets, 129 m** (the closest one)\n- **Toilets, 135 m**\n- **Toilets, 166 m**\n- **Toilets, 184 m**\n\nThese entries have no names in the map data, so I can't tell you their opening hours or whether they're free. Head for the pins on the map next to this chat. If none of these suits, there are more about 350 to 450 m away."
+ }
+]

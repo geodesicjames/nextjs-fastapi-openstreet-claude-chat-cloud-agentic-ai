@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Any restaurants near Dean Village?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Dean Village, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Dean Village\", \"display_name\": \"Dean Village, West End, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9522594, \"lon\": -3.2182207, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9522594,\n  \"lon\": -3.2182207,\n  \"radius_m\": 800,\n  \"categories\": [\n    \"restaurant\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"f73f3cca-a772-491a-b2eb-e5e9055c6a90\", \"name\": \"La Plaza Bistro\", \"category\": \"restaurant\", \"distance_m\": 383, \"lat\": 55.951497, \"lon\": -3.212218}, {\"place_id\": \"30a1e34e-11e5-4f68-a686-f014c26a17bc\", \"name\": \"Kismath\", \"category\": \"restaurant\", \"distance_m\": 426, \"lat\": 55.95137, \"lon\": -3.211558}, {\"place_id\": \"76e24e33-3eed-4cfc-ae12-0db563649082\", \"name\": \"Teuchters Bunker\", \"category\": \"restaurant\", \"distance_m\": 499, \"lat\": 55.949264, \"lon\": -3.212261}, {\"place_id\": \"018c89d0-f09e-4b07-b612-326b86f4608a\", \"name\": \"La P'tite Folie\", \"category\": \"restaurant\", \"distance_m\": 527, \"lat\": 55.951499, \"lon\": -3.209869}, {\"place_id\": \"2c129556-af3d-4eae-b464-5ef912718986\", \"name\": \"Dulse Seafood & Wine\", \"category\": \"restaurant\", \"distance_m\": 535, \"lat\": 55.950861, \"lon\": -3.209995}, {\"place_id\": \"8ae952df-2b2f-43ef-af66-ddd164058deb\", \"name\": \"PizzaExpress\", \"category\": \"restaurant\", \"distance_m\": 554, \"lat\": 55.950936, \"lon\": -3.209645}, {\"place_id\": \"607c229f-9d59-48eb-94b7-70a74f27dfc1\", \"name\": \"Evergreen\", \"category\": \"restaurant\", \"distance_m\": 560, \"lat\": 55.950605, \"lon\": -3.20972}, {\"place_id\": \"14be8f73-3a06-47bf-a2f8-d55d8ad3ba7e\", \"name\": \"Korean BBQ\", \"category\": \"restaurant\", \"distance_m\": 562, \"lat\": 55.947891, \"lon\": -3.213694}, {\"place_id\": \"8b493e69-44fa-493a-aa96-4a08e07173f4\", \"name\": \"Rendezvous\", \"category\": \"restaurant\", \"distance_m\": 586, \"lat\": 55.950517, \"lon\": -3.209334}, {\"place_id\": \"ce917bca-0fcd-40a3-a719-1355f4a14476\", \"name\": \"The Palmerston\", \"category\": \"restaurant\", \"distance_m\": 588, \"lat\": 55.947265, \"lon\": -3.215107}, {\"place_id\": \"a7edfe37-e187-4cb6-b384-68dac8143e93\", \"name\": \"Lennox\", \"category\": \"restaurant\", \"distance_m\": 597, \"lat\": 55.9508, \"lon\": -3.208991}, {\"place_id\": \"677bfbaa-9edd-4028-ace2-8e912ff4504e\", \"name\": \"Hope Izakaya\", \"category\": \"restaurant\", \"distance_m\": 606, \"lat\": 55.950668, \"lon\": -3.208912}, {\"place_id\": \"6f9e7e42-4c98-4251-b430-756be1b204bc\", \"name\": \"Casserole Wang\", \"category\": \"restaurant\", \"distance_m\": 606, \"lat\": 55.946995, \"lon\": -3.21571}, {\"place_id\": \"40d64a20-235f-4741-9794-53341231af76\", \"name\": \"Social by Matto\", \"category\": \"restaurant\", \"distance_m\": 607, \"lat\": 55.948934, \"lon\": -3.210499}, {\"place_id\": \"1bb8d1bc-e93d-4754-90b3-41d252f68116\", \"name\": \"Rishi's Indian Aroma\", \"category\": \"restaurant\", \"distance_m\": 608, \"lat\": 55.948974, \"lon\": -3.210409}, {\"place_id\": \"044126f3-02bb-4dd2-84c7-b4a6abf5d89e\", \"name\": \"My Home Town\", \"category\": \"restaurant\", \"distance_m\": 610, \"lat\": 55.949008, \"lon\": -3.210328}, {\"place_id\": \"ee2f9708-822d-403a-af7d-e50c3ddbf873\", \"name\": \"Zizzi\", \"category\": \"restaurant\", \"distance_m\": 618, \"lat\": 55.95055, \"lon\": -3.208777}, {\"place_id\": \"9cc720b3-8221-4e60-b148-5c34ec673e0f\", \"name\": \"Umi\", \"category\": \"restaurant\", \"distance_m\": 638, \"lat\": 55.950097, \"lon\": -3.208734}, {\"place_id\": \"c9066227-459f-4acf-bcd1-36c37a1cfe80\", \"name\": \"Royal Durbar\", \"category\": \"restaurant\", \"distance_m\": 639, \"lat\": 55.949551, \"lon\": -3.209165}, {\"place_id\": \"461dcd7e-1a4a-4cd3-a99e-db0086af29ba\", \"name\": \"Chowk 47\", \"category\": \"restaurant\", \"distance_m\": 642, \"lat\": 55.946557, \"lon\": -3.216604}], \"total_found\": 52}"
+ },
+ {
+  "role": "assistant",
+  "content": "Yes, there are plenty within about 800 m of Dean Village. The closest are:\n\n- **La Plaza Bistro**, 383 m\n- **Kismath**, 426 m\n- **Teuchters Bunker**, 499 m\n- **La P'tite Folie**, 527 m\n- **Dulse Seafood & Wine**, 535 m\n- **PizzaExpress**, 554 m\n- **Evergreen**, 560 m\n\nOther options a bit further out include Korean BBQ, The Palmerston, Casserole Wang and Rishi's Indian Aroma. The search found 52 restaurants in total, so I've only listed the nearest. I can check opening hours for any of these if you tell me which."
+ }
+]
