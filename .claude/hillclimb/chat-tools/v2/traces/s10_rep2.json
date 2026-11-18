@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. When you list some of the results, say so rather than giving a count you haven't checked.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "We're walking up Arthur's Seat - anywhere to see the view or get water nearby?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Arthur's Seat, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Arthur's Seat\", \"display_name\": \"Arthur's Seat, City of Edinburgh, Scotland, EH8 8HG, United Kingdom\", \"lat\": 55.9440693, \"lon\": -3.161603, \"kind\": \"natural:peak\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9440693,\n  \"lon\": -3.161603,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"viewpoint\",\n    \"drinking_water\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"1fab7411-7afd-467f-bcfe-df59f908152f\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 26, \"lat\": 55.944004, \"lon\": -3.162007}, {\"place_id\": \"e10bdc87-867c-4ef3-b0a2-d562cd82291c\", \"name\": \"Hike to Arthurs Seat\", \"category\": \"viewpoint\", \"distance_m\": 157, \"lat\": 55.944633, \"lon\": -3.159285}, {\"place_id\": \"172162c4-4942-42bb-bf2d-f776efe8f036\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 178, \"lat\": 55.944835, \"lon\": -3.159091}, {\"place_id\": \"ecbf8a71-92a8-4e6a-a4b0-f80d2096e8ce\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 794, \"lat\": 55.950518, \"lon\": -3.156138}], \"total_found\": 4}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found four viewpoints near Arthur's Seat, but no drinking water within 1 km.\n\n- Unnamed viewpoint, 26 m\n- \"Hike to Arthurs Seat\" viewpoint, 157 m\n- Unnamed viewpoint, 178 m\n- Unnamed viewpoint, 794 m\n\nIf you need water, bring it with you, since the map shows none nearby. The map data may be incomplete, so check the area as you go."
+ }
+]

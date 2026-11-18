@@ -1,0 +1,41 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. When you list some of the results, say so rather than giving a count you haven't checked.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "When does Soderberg in Stockbridge close on Saturdays?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Soderberg, Stockbridge, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Stockbridge\", \"display_name\": \"Stockbridge, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9579716, \"lon\": -3.2093404, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9579716,\n  \"lon\": -3.2093404,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"cafe\",\n    \"restaurant\"\n  ],\n  \"name\": \"soderberg\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"77651ee3-750c-434f-805b-4727e3a2447e\", \"name\": \"Soderberg\", \"category\": \"cafe\", \"distance_m\": 37, \"lat\": 55.958237, \"lon\": -3.208987}], \"total_found\": 1}"
+ },
+ {
+  "role": "tool_call",
+  "name": "get_place_details",
+  "content": "{\n  \"place_id\": \"77651ee3-750c-434f-805b-4727e3a2447e\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"place_id\": \"77651ee3-750c-434f-805b-4727e3a2447e\", \"name\": \"Soderberg\", \"category\": \"cafe\", \"lat\": 55.958237, \"lon\": -3.208987, \"tags\": {\"addr:city\": \"Edinburgh\", \"addr:floor\": \"G\", \"addr:housenumber\": \"3\", \"addr:postcode\": \"EH4 1LU\", \"addr:street\": \"Deanhaugh Street\", \"amenity\": \"cafe\", \"check_date\": \"2026-03-15\", \"fhrs:id\": \"1534587\", \"level\": \"0\", \"name\": \"Soderberg\", \"opening_hours\": \"Mo-Fr 08:00-18:00; Sa-Su 09:00-18:00\", \"payment:cash\": \"no\", \"payment:credit_cards\": \"yes\", \"payment:debit_cards\": \"yes\", \"source\": \"survey\", \"website\": \"https://www.soderberg.uk/\", \"wheelchair\": \"limited\"}, \"osm_url\": \"https://www.openstreetmap.org/node/2077010237\"}"
+ },
+ {
+  "role": "assistant",
+  "content": "Soderberg (a café at 3 Deanhaugh Street, about 40 m from the Stockbridge centre point I searched) is listed as open **9:00 to 18:00 on Saturdays**, according to its OpenStreetMap hours (Mo-Fr 08:00-18:00; Sa-Su 09:00-18:00). The data was last checked in March 2026, so it's worth confirming on their website (soderberg.uk) if it matters."
+ }
+]
