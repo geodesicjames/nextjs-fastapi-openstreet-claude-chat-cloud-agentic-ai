@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "I'm in Bruntsfield with a toddler - nearest park?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Bruntsfield, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Bruntsfield\", \"display_name\": \"Bruntsfield, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9370345, \"lon\": -3.2070392, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9370345,\n  \"lon\": -3.2070392,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"park\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"3e7bc574-ca7b-4d4d-ba4a-84d27d96a9d3\", \"name\": null, \"category\": \"park\", \"distance_m\": 304, \"lat\": 55.934363, \"lon\": -3.206024}, {\"place_id\": \"1d944ea0-ca53-483b-aafe-61c39de8694f\", \"name\": null, \"category\": \"park\", \"distance_m\": 382, \"lat\": 55.933751, \"lon\": -3.205218}, {\"place_id\": \"3b94be5b-b916-42be-ab6c-05f2714ba34a\", \"name\": \"Bruntsfield Links\", \"category\": \"park\", \"distance_m\": 444, \"lat\": 55.939191, \"lon\": -3.201047}, {\"place_id\": \"692592e8-7146-442f-a4e8-8fee520b35eb\", \"name\": \"Fountainbridge Green\", \"category\": \"park\", \"distance_m\": 629, \"lat\": 55.939827, \"lon\": -3.215826}, {\"place_id\": \"882d5044-e999-481e-a93d-7383659aa3f7\", \"name\": null, \"category\": \"park\", \"distance_m\": 918, \"lat\": 55.92882, \"lon\": -3.205539}, {\"place_id\": \"4e3f1b78-0d97-45d8-99d0-4bb0544e4950\", \"name\": null, \"category\": \"park\", \"distance_m\": 962, \"lat\": 55.928525, \"lon\": -3.204246}, {\"place_id\": \"f2a5d649-aa1a-444d-967c-cae2fa95c0e2\", \"name\": \"Dalry Community Park\", \"category\": \"park\", \"distance_m\": 999, \"lat\": 55.940891, \"lon\": -3.221518}], \"total_found\": 7}"
+ },
+ {
+  "role": "assistant",
+  "content": "The nearest park is an unnamed one about **300 m** from central Bruntsfield. Other options nearby:\n\n- **Bruntsfield Links**, about 440 m. It's a large open green space, so it's good for running around.\n- **Fountainbridge Green**, about 630 m.\n- **Dalry Community Park**, about 1 km.\n\nThe map data doesn't say much about play equipment, so check before you go. I can also look for toilets or cafés near any of these if you'd like."
+ }
+]

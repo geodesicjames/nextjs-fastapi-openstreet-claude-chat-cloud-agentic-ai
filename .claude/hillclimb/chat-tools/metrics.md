@@ -30,6 +30,18 @@ Median latency 4.1 s (max 14.4 s), 2.0 tool calls per question, about $0.0005 of
 question. The judge costs about $0.01 per question (20× the app), so a full 52-run pass is
 about $0.55, almost all of it the judge.
 
+## v1: name filter for search_places (2026-11-18)
+
+| metric | baseline | v1 |
+| --- | --- | --- |
+| tool_use | 51/52 = 98% | **52/52 = 100%** (CI 93–100%) |
+| grounded | 42/52 = 81% | 42/52 = 81% |
+
+Only d02 changed on `tool_use` (1/2 → 2/2). `name` was used in all 8 named-place runs and in none of
+the 44 others. On `grounded`, 7 cases moved in both directions, none involving `name`. That is the
+first direct measurement of run-to-run noise: **about a quarter of cases can flip between runs**, so
+`grounded` only detects large changes at this size. Median latency 3.9 s; the run cost $0.55.
+
 ## Known limitations
 
 - **Judge noise isn't measured yet.** The final grade came from two re-grades that changed the
@@ -44,8 +56,7 @@ about $0.55, almost all of it the judge.
 
 ## Findings worth acting on
 
-- **No name search:** d02 rep 0 couldn't find "The Whispering Kettle" because `search_places`
-  only returns the nearest 20 places and has no name filter.
+- ~~**No name search**~~: fixed in v1 (#29). d02 now passes on both reps.
 - **Embellishment** is the main `grounded` failure: guesses from names ("inside the park"),
   loose landmark references ("near Costa"), miscounts, and adjectives like "quiet" or "large".
   The system prompt could address these, and this eval can measure whether it helps.

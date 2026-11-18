@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Somewhere for lunch near Haymarket station"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Haymarket station, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Haymarket\", \"display_name\": \"Haymarket, Distillery Lane, Dalry, City of Edinburgh, Scotland, EH11 2AU, United Kingdom\", \"lat\": 55.9451838, \"lon\": -3.2193738, \"kind\": \"railway:station\"}, {\"name\": \"Haymarket\", \"display_name\": \"Haymarket, West End, City of Edinburgh, Scotland, EH11 2BG, United Kingdom\", \"lat\": 55.9459752, \"lon\": -3.2171336, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9451838,\n  \"lon\": -3.2193738,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"restaurant\",\n    \"cafe\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"06df7215-bb9d-4588-b474-6a5a79154283\", \"name\": \"Timorous Beastie Street Coffee\", \"category\": \"cafe\", \"distance_m\": 30, \"lat\": 55.945291, \"lon\": -3.218938}, {\"place_id\": \"793ce2ef-dc5c-4887-a83c-3dcc73912a8d\", \"name\": \"AMT Coffee\", \"category\": \"cafe\", \"distance_m\": 74, \"lat\": 55.945529, \"lon\": -3.21835}, {\"place_id\": \"99f6d61f-6d42-446d-9a4b-13633ae610f0\", \"name\": \"Nomad\", \"category\": \"cafe\", \"distance_m\": 91, \"lat\": 55.946001, \"lon\": -3.219365}, {\"place_id\": \"bef749e1-39e7-4fb8-afb7-d69c7adda4af\", \"name\": \"Arboosh\", \"category\": \"cafe\", \"distance_m\": 94, \"lat\": 55.946006, \"lon\": -3.219713}, {\"place_id\": \"b6a73230-4af0-4969-a0eb-af3201937c81\", \"name\": \"Medo Cafe\", \"category\": \"cafe\", \"distance_m\": 98, \"lat\": 55.944819, \"lon\": -3.21794}, {\"place_id\": \"6484e366-afeb-4b6b-ae65-4ce8d81ef3ae\", \"name\": \"La Bruschetta\", \"category\": \"restaurant\", \"distance_m\": 98, \"lat\": 55.946005, \"lon\": -3.218793}, {\"place_id\": \"83e86e65-cdad-479e-8f74-ea24b592e17f\", \"name\": \"Twelve Triangles\", \"category\": \"cafe\", \"distance_m\": 98, \"lat\": 55.944772, \"lon\": -3.217974}, {\"place_id\": \"b6f21784-8c7d-4d64-ae6f-5ee0bf6eede6\", \"name\": \"Sandwich Culture\", \"category\": \"cafe\", \"distance_m\": 99, \"lat\": 55.94601, \"lon\": -3.219968}, {\"place_id\": \"cbc9440d-a1d7-41a3-b92d-990c3a000198\", \"name\": \"Viet Nam House\", \"category\": \"cafe\", \"distance_m\": 102, \"lat\": 55.946011, \"lon\": -3.220099}, {\"place_id\": \"973ced86-70a3-49dc-8c43-7e5049946191\", \"name\": \"Throat Punch Coffee Co\", \"category\": \"cafe\", \"distance_m\": 103, \"lat\": 55.945113, \"lon\": -3.217728}, {\"place_id\": \"92fe6945-1532-4413-b282-3b4445cd88c1\", \"name\": \"Roasters Artisan Coffee\", \"category\": \"cafe\", \"distance_m\": 110, \"lat\": 55.944448, \"lon\": -3.218193}, {\"place_id\": \"5dc808b8-2924-4f0f-908b-abbfcae4747f\", \"name\": \"Troy\", \"category\": \"cafe\", \"distance_m\": 110, \"lat\": 55.945248, \"lon\": -3.217605}, {\"place_id\": \"797515fd-aeef-4781-8d91-eee1e88c42eb\", \"name\": \"Haymarket Café by L&G\", \"category\": \"cafe\", \"distance_m\": 111, \"lat\": 55.946015, \"lon\": -3.220354}, {\"place_id\": \"26cb71fd-a3e7-4faa-a1ce-73096fc7a5aa\", \"name\": \"Qevani's Crepe House\", \"category\": \"cafe\", \"distance_m\": 116, \"lat\": 55.944343, \"lon\": -3.218259}, {\"place_id\": \"856f1c5b-9829-4179-9e10-4df5d7ec8012\", \"name\": \"dahné\", \"category\": \"cafe\", \"distance_m\": 123, \"lat\": 55.944842, \"lon\": -3.217497}, {\"place_id\": \"b0612bc5-7cf2-4f11-bcc2-af4deb561ea7\", \"name\": \"Nam\", \"category\": \"restaurant\", \"distance_m\": 124, \"lat\": 55.94602, \"lon\": -3.220699}, {\"place_id\": \"e7c691aa-4133-4b06-bd87-e209aed6f3ef\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 128, \"lat\": 55.945742, \"lon\": -3.217577}, {\"place_id\": \"243c95b8-2ea2-4fe9-950d-58163c6658d0\", \"name\": \"Pizza Geeks\", \"category\": \"restaurant\", \"distance_m\": 138, \"lat\": 55.945298, \"lon\": -3.217169}, {\"place_id\": \"07b53954-176c-4bb4-b2dc-08395178f08f\", \"name\": \"Xiangbala Hotpot\", \"category\": \"restaurant\", \"distance_m\": 140, \"lat\": 55.944212, \"lon\": -3.217955}, {\"place_id\": \"676e5bd7-877b-475d-977f-24769a9b038e\", \"name\": \"Los Amigos\", \"category\": \"restaurant\", \"distance_m\": 141, \"lat\": 55.945349, \"lon\": -3.217132}], \"total_found\": 69}"
+ },
+ {
+  "role": "assistant",
+  "content": "Near Haymarket station, these look good for lunch. I used the station itself as the centre.\n\n**Restaurants**\n- La Bruschetta, 98 m\n- Nam, 124 m\n- Pizza Geeks, 138 m\n- Xiangbala Hotpot, 140 m\n- Los Amigos, 141 m\n\n**Cafés that may do lunch**\n- Sandwich Culture, 99 m\n- Arboosh, 94 m\n- Medo Cafe, 98 m\n\nThe map data doesn't include menus or opening hours here, so I can't say what's open now. I can check a specific place's details if you pick one."
+ }
+]

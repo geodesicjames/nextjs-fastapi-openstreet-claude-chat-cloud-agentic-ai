@@ -1,0 +1,36 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Where can I refill my water bottle near the Royal Mile?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Royal Mile, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Canongate\", \"display_name\": \"Canongate, Holyrood, Canongate, Old Town, City of Edinburgh, Scotland, EH8 8DD, United Kingdom\", \"lat\": 55.9515329, \"lon\": -3.1791979, \"kind\": \"highway:tertiary\"}, {\"name\": \"Lawnmarket\", \"display_name\": \"Lawnmarket, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2PQ, United Kingdom\", \"lat\": 55.9492923, \"lon\": -3.1935672, \"kind\": \"highway:pedestrian\"}, {\"name\": \"High Street\", \"display_name\": \"High Street, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 1PN, United Kingdom\", \"lat\": 55.949719, \"lon\": -3.1910551, \"kind\": \"highway:unclassified\"}, {\"name\": \"Castlehill\", \"display_name\": \"Castlehill, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2ND, United Kingdom\", \"lat\": 55.9488969, \"lon\": -3.1954305, \"kind\": \"highway:pedestrian\"}, {\"name\": \"High Street\", \"display_name\": \"High Street, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 1QX, United Kingdom\", \"lat\": 55.9499402, \"lon\": -3.1892573, \"kind\": \"highway:pedestrian\"}]}"
+ },
+ {
+  "role": "assistant",
+  "content": "The Royal Mile runs roughly from Castlehill to Canongate, so I'll search around its middle, near High Street."
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9497,\n  \"lon\": -3.191,\n  \"radius_m\": 800,\n  \"categories\": [\n    \"drinking_water\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"241d81cf-a8f8-47f6-9c75-60d3fb359d2f\", \"name\": \"Top Up Tap\", \"category\": \"drinking_water\", \"distance_m\": 74, \"lat\": 55.949933, \"lon\": -3.189879}, {\"place_id\": \"8a40d350-d70e-4ad8-b7a0-c7530885dd73\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 284, \"lat\": 55.951938, \"lon\": -3.188815}, {\"place_id\": \"da918eeb-6840-4e5e-be2c-410d2d3b9737\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 294, \"lat\": 55.947323, \"lon\": -3.188929}, {\"place_id\": \"42acc49d-4e20-458c-8c5d-994f1218f009\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 302, \"lat\": 55.952115, \"lon\": -3.188763}, {\"place_id\": \"e0e5f00c-6180-4409-9700-f7872b8633a3\", \"name\": \"Top Up Tap\", \"category\": \"drinking_water\", \"distance_m\": 408, \"lat\": 55.947496, \"lon\": -3.196249}, {\"place_id\": \"850d9ae4-cc67-4f8b-b486-c417cf8f83e3\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 440, \"lat\": 55.946139, \"lon\": -3.187905}, {\"place_id\": \"4cd29ae8-cf57-4c8f-8d0d-f04fb537fb69\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 552, \"lat\": 55.954473, \"lon\": -3.188538}], \"total_found\": 7}"
+ },
+ {
+  "role": "assistant",
+  "content": "There are several drinking water points within about 550 m of the middle of the Royal Mile (around High Street):\n\n- **Top Up Tap**, about 75 m away\n- An unnamed drinking water point, about 285 m away\n- Another unnamed one, about 295 m away\n- Another unnamed one, about 300 m away\n- **Top Up Tap** near Lawnmarket, about 410 m away\n- An unnamed one, about 440 m away\n- An unnamed one, about 550 m away\n\nThe distances are from the High Street point I searched around, so they'll vary depending on where you're walking. I can check opening hours or other details for any of these if you'd like."
+ }
+]

@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Coffee in Stockbridge?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Stockbridge, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Stockbridge\", \"display_name\": \"Stockbridge, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9579716, \"lon\": -3.2093404, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9579716,\n  \"lon\": -3.2093404,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"cafe\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"3d739d50-45aa-4325-8e83-b5cd8a6a7dd6\", \"name\": \"Soderberg\", \"category\": \"cafe\", \"distance_m\": 37, \"lat\": 55.958237, \"lon\": -3.208987}, {\"place_id\": \"982feaf2-4103-442c-87ee-8e7153f47753\", \"name\": \"The Howdah Tea & Coffee Co\", \"category\": \"cafe\", \"distance_m\": 39, \"lat\": 55.95827, \"lon\": -3.209025}, {\"place_id\": \"0d8afd74-1c5c-4ed7-b861-1b1ebb9bcb74\", \"name\": \"Singh Street Cha\", \"category\": \"cafe\", \"distance_m\": 48, \"lat\": 55.958401, \"lon\": -3.209209}, {\"place_id\": \"ae4c181a-023c-4287-be63-0c6fc484e7e0\", \"name\": \"Toastology\", \"category\": \"cafe\", \"distance_m\": 66, \"lat\": 55.958562, \"lon\": -3.209459}, {\"place_id\": \"8f9560ea-1299-4788-a2a4-5c6036e49f2b\", \"name\": \"Caffè Nero\", \"category\": \"cafe\", \"distance_m\": 67, \"lat\": 55.957909, \"lon\": -3.208266}, {\"place_id\": \"fd4e808a-efaf-4858-a229-671b89c7a86e\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 123, \"lat\": 55.957535, \"lon\": -3.207532}, {\"place_id\": \"350d5306-a8cf-4eab-8598-997699982950\", \"name\": \"Poppy\", \"category\": \"cafe\", \"distance_m\": 128, \"lat\": 55.958618, \"lon\": -3.20764}, {\"place_id\": \"7b8abfa6-89b9-4553-b5b2-948377468af5\", \"name\": \"Books N' Cup\", \"category\": \"cafe\", \"distance_m\": 134, \"lat\": 55.959014, \"lon\": -3.210406}, {\"place_id\": \"0d31c91b-29ee-4fd1-8f0c-3b52f7b7831e\", \"name\": \"KUBO CAFE\", \"category\": \"cafe\", \"distance_m\": 162, \"lat\": 55.957954, \"lon\": -3.206739}, {\"place_id\": \"d3981097-d070-466c-943c-2a1b9c304e28\", \"name\": \"Harkness Pies\", \"category\": \"cafe\", \"distance_m\": 162, \"lat\": 55.959067, \"lon\": -3.211061}, {\"place_id\": \"55943c25-073c-4425-8f24-b28e3c95c671\", \"name\": \"La Barantine\", \"category\": \"cafe\", \"distance_m\": 163, \"lat\": 55.958883, \"lon\": -3.211401}, {\"place_id\": \"b22a02dc-bcaa-4866-8d36-5334dc978128\", \"name\": \"Cowan & Sons\", \"category\": \"cafe\", \"distance_m\": 180, \"lat\": 55.958908, \"lon\": -3.211705}, {\"place_id\": \"f71f95e5-7ad5-4338-833d-8502377cde8d\", \"name\": \"Fortitude\", \"category\": \"cafe\", \"distance_m\": 194, \"lat\": 55.959166, \"lon\": -3.207068}, {\"place_id\": \"ebd3fdb4-1d80-41db-8066-098264f03a18\", \"name\": \"CafeLife\", \"category\": \"cafe\", \"distance_m\": 213, \"lat\": 55.95818, \"lon\": -3.212741}, {\"place_id\": \"f91af074-6f0e-4717-8cdc-616eff6bf1cc\", \"name\": \"Cafe Romina\", \"category\": \"cafe\", \"distance_m\": 222, \"lat\": 55.958968, \"lon\": -3.21244}, {\"place_id\": \"6ea2b3bd-33b5-483c-a691-3efce9a97bef\", \"name\": \"Patisserie Florentin\", \"category\": \"cafe\", \"distance_m\": 227, \"lat\": 55.957269, \"lon\": -3.205919}, {\"place_id\": \"6ca87b8f-24ae-447d-81ef-9e6e9a57eeb7\", \"name\": \"Costa\", \"category\": \"cafe\", \"distance_m\": 234, \"lat\": 55.959186, \"lon\": -3.212414}, {\"place_id\": \"30f32faa-ab88-4fae-8de5-222721052ab2\", \"name\": \"The Pastry Section\", \"category\": \"cafe\", \"distance_m\": 286, \"lat\": 55.959253, \"lon\": -3.213318}, {\"place_id\": \"67521fbf-2d9c-4059-bdef-550dc91767f8\", \"name\": \"Cafe Gallo\", \"category\": \"cafe\", \"distance_m\": 303, \"lat\": 55.959274, \"lon\": -3.213608}, {\"place_id\": \"57a9a894-b75d-4668-a1b4-d6ee149413a1\", \"name\": \"Artisan Roast\", \"category\": \"cafe\", \"distance_m\": 316, \"lat\": 55.959295, \"lon\": -3.213826}], \"total_found\": 27}"
+ },
+ {
+  "role": "assistant",
+  "content": "Stockbridge has plenty of coffee options. The closest cafés within about 500 m of the centre of Stockbridge are:\n\n- **Soderberg**, 40 m\n- **The Howdah Tea & Coffee Co**, 40 m\n- **Toastology**, 65 m\n- **Caffè Nero**, 70 m\n- **Poppy**, 130 m\n- **Books N' Cup**, 135 m\n- **Harkness Pies**, 160 m\n- **Artisan Roast**, 320 m\n\nDistances are straight-line from the centre of Stockbridge. I can check opening hours for any of these if you tell me which one."
+ }
+]
