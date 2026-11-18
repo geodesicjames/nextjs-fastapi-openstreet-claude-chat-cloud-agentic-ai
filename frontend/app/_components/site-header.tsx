@@ -14,9 +14,14 @@ export function SiteHeader() {
   return (
     <header className="border-b border-neutral-200 dark:border-neutral-800">
       <div className="mx-auto flex w-full max-w-5xl items-center justify-between px-6 py-3">
-        <Link href="/" className="font-semibold">
-          Places
-        </Link>
+        <nav className="flex items-center gap-5">
+          <Link href="/" className="font-semibold">
+            Places
+          </Link>
+          <Link href="/map" className="text-sm underline-offset-4 hover:underline">
+            Map
+          </Link>
+        </nav>
         <Suspense fallback={null}>
           <UserMenu />
         </Suspense>

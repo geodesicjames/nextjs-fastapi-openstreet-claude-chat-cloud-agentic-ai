@@ -4,9 +4,9 @@ A map-based "ask about places" web app. Browse an OpenStreetMap-based map, searc
 for places, and (with invited access) chat with Claude, which uses tools to search
 places, compute routes and, eventually, plan multi-step trips as an agent.
 
-> **Status:** Phase 1, foundation. The stack runs end-to-end, the home page reports
-> live API, database and PostGIS status, and users can sign in with a magic link.
-> Maps and chat come next.
+> **Status:** Phase 2, maps. `/map` shows OpenStreetMap places, cached in
+> PostGIS, with place search. Magic-link sign-in and invite-only chat access are
+> in place. Claude chat comes next.
 
 ## Architecture
 
@@ -53,6 +53,9 @@ frontend/
   lib/api.ts       server-only API client (forwards the session cookie)
   lib/auth-actions.ts  Server Actions for sign-in and sign-out
   lib/access-actions.ts  Server Actions for requesting access and the admin page
+  app/map/         the map page (MapLibre GL, a Client Component)
+  app/api/         route handlers the map calls from the browser (proxy to FastAPI)
+  scripts/         copy-maplibre-worker.mjs (see Decisions)
 docker-compose.yml
 ```
 
@@ -76,6 +79,15 @@ docker compose up --build
 - API: http://localhost:8000/health, with interactive docs at http://localhost:8000/docs.
 
 Migrations run automatically when the backend container starts.
+
+After pulling changes that add dependencies, rebuild the affected image. For
+the frontend, also renew its `node_modules` volume. Running `pnpm install`
+inside the running container can leave its packages half-linked.
+
+```bash
+docker compose up -d --build backend
+docker compose up -d --build --renew-anon-volumes frontend
+```
 
 ### Signing in locally
 
@@ -146,6 +158,16 @@ cached in PostGIS:
   [public instance](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances)
   to change it. The budgets follow the main instance's stricter policy
   whichever you use.
+
+### The map
+
+http://localhost:3000/map shows a vector map (MapLibre GL with
+[OpenFreeMap](https://openfreemap.org) tiles; no API key). Zoom in to level 13
+or closer and places load for the visible area, refreshing as you pan. You can
+filter by category, search for a place (on submit), and click a place for its
+opening hours, website and a link to OpenStreetMap. To use another tile
+provider, set `NEXT_PUBLIC_MAP_STYLE_URL` to its style URL. Tile keys are
+public by design.
 
 ### Place search (geocoding)
 
@@ -236,5 +258,9 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Overpass budget kept in the database** | The `upstream_calls` table is shared by every backend process and survives restarts. An in-memory counter would reset on each deploy and count per process. |
 | **Incomplete results instead of errors** | When Overpass is busy or the budget is used up, the map still shows cached places and says why some are missing, rather than failing. |
 | **Rate limits use the real client IP** | Requests reach FastAPI through Next.js, so the visitor's IP is in `X-Forwarded-For`. It's only trusted from `TRUSTED_PROXIES`, and read right to left, so clients can't dodge limits with a fake header. The counters are in memory for now; several backend instances would need Redis. |
+| **Map data via Next.js route handlers** | The map is browser code, so it can't use Server Components to fetch on every pan. `/api/places` and `/api/geocode` forward to FastAPI server-side, so the browser still only talks to the Next.js origin and FastAPI stays private. |
+| **Per-IP limits trust the edge proxy** | Next.js only fills in `X-Forwarded-For` when the request doesn't already have one, so with nothing in front of it (local dev) a client could fake its IP. In production the load balancer appends the real address, and FastAPI reads the header right to left. Per-IP limits are for fairness; the OSM usage budgets are enforced across the whole backend, so faked IPs can't push us over them. |
+| **MapLibre's worker is copied into `public/`** | MapLibre parses tiles in a Web Worker that it loads from a URL it works out at runtime, which bundlers can't follow. `pnpm dev` and `pnpm build` copy the installed worker to `public/vendor/` (gitignored), and the map calls `setWorkerUrl`. |
+| **OSM links only if http(s)** | Anyone can edit OSM tags, so a `website` tag could be a `javascript:` URL. The details panel only links http and https addresses. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |
