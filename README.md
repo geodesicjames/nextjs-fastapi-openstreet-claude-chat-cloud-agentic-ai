@@ -52,6 +52,7 @@ frontend/
   app/             routes (App Router)
   lib/api.ts       server-only API client (forwards the session cookie)
   lib/auth-actions.ts  Server Actions for sign-in and sign-out
+  lib/access-actions.ts  Server Actions for requesting access and the admin page
 docker-compose.yml
 ```
 
@@ -105,15 +106,18 @@ default budget. `GET /chat/access` reports your status and today's usage.
 
 How someone gets access:
 
-1. They submit the request form (`POST /access-requests`). Every admin gets an email.
-2. An admin approves or denies it (`/admin/access-requests/{id}/approve` or
-   `/deny`). Approving creates their account if needed, creates a grant with an
-   optional daily limit, expiry and note, and emails them a sign-in link.
-3. Admins can edit a grant (`PATCH /admin/grants/{id}`) or revoke it
-   (`POST /admin/grants/{id}/revoke`). Edits take effect on the user's next request.
+1. They fill in the form at http://localhost:3000/request-access
+   (`POST /access-requests`). Every admin gets an email.
+2. An admin approves or denies it on http://localhost:3000/admin. Approving
+   creates their account if needed, creates a grant with an optional daily
+   limit, expiry and note, and emails them a sign-in link.
+3. On the same page, admins can edit a grant's limit, expiry or note, or revoke
+   it. Changes take effect on the user's next request.
 
-Until the admin page exists, these are easiest to try from the interactive API
-docs at http://localhost:8000/docs (sign in there first via `/auth/verify`).
+The site header shows each signed-in user how many chat tokens they have left
+today, or a "Request chat access" link if they have no grant. Admins also see
+an **Admin** link. The underlying endpoints are documented at
+http://localhost:8000/docs.
 
 ### Git hooks (once per clone)
 
