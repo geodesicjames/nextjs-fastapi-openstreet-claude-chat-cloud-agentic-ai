@@ -139,9 +139,13 @@ cached in PostGIS:
   `"complete": false` and an `incomplete_reason` (`budget`, `cooldown`,
   `upstream_error` or `busy`).
 - Set `OSM_CONTACT` in `.env` so the User-Agent identifies you, as the
-  usage policy asks. The main public instance is often at capacity. For
-  development you can point `OVERPASS_URL` at another
-  [public instance](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances).
+  usage policies ask.
+- The default instance is the community-run `ovp.dresel.systems`, because the
+  main `overpass-api.de` was often at capacity during development. Point
+  `OVERPASS_URL` at any other
+  [public instance](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances)
+  to change it. The budgets follow the main instance's stricter policy
+  whichever you use.
 
 ### Git hooks (once per clone)
 

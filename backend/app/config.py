@@ -57,7 +57,11 @@ class Settings(BaseSettings):
     # default). Put a URL or email people can reach you at here; it is sent
     # only to the OSM services, as part of that header.
     osm_contact: str = ""
-    overpass_url: str = "https://overpass-api.de/api/interpreter"
+    # A community-run public instance (Europe; .../api-na/interpreter for North
+    # America), used because the main overpass-api.de is often at capacity.
+    # It asks for an identifying User-Agent and at most 4 parallel queries per
+    # IP. The budgets below follow the stricter main-instance policy anyway.
+    overpass_url: str = "https://ovp.dresel.systems/api/interpreter"
     # Server-side query timeout. Our queries cover at most a few km², which
     # normally takes a second or two; the HTTP wait is this plus 5 seconds.
     overpass_timeout_seconds: int = 10
