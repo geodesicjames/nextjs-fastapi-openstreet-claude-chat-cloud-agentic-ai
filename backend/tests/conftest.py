@@ -17,7 +17,7 @@ database empty.
 
 import asyncio
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -161,3 +161,14 @@ async def client(app: FastAPI) -> AsyncIterator[AsyncClient]:
     """
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def use_settings(app: FastAPI) -> Callable[..., None]:
+    """Override settings for one test, e.g. use_settings(chat_mode="open")."""
+
+    def apply(**changes: object) -> None:
+        settings = get_settings().model_copy(update=changes)
+        app.dependency_overrides[get_settings] = lambda: settings
+
+    return apply

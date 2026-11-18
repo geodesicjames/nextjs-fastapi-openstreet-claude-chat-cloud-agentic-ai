@@ -121,16 +121,18 @@ dependencies = [
     { name = "alembic" },
     { name = "asyncpg" },
     { name = "fastapi", extra = ["standard"] },
+    { name = "geoalchemy2" },
+    { name = "httpx" },
     { name = "pydantic-settings" },
     { name = "sqlalchemy", extra = ["asyncio"] },
 ]
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pyright" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "respx" },
     { name = "ruff" },
 ]
 
@@ -139,16 +141,18 @@ requires-dist = [
     { name = "alembic", specifier = ">=1.20.1" },
     { name = "asyncpg", specifier = ">=0.32.0" },
     { name = "fastapi", extras = ["standard"], specifier = ">=0.163.2" },
+    { name = "geoalchemy2", specifier = ">=0.21.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pydantic-settings", specifier = ">=2.16.3" },
     { name = "sqlalchemy", extras = ["asyncio"], specifier = ">=2.1.9" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "httpx", specifier = ">=0.28.1" },
     { name = "pyright", specifier = ">=1.1.414" },
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-asyncio", specifier = ">=1.5.0" },
+    { name = "respx", specifier = ">=0.23.1" },
     { name = "ruff", specifier = ">=0.17.5" },
 ]
 
@@ -486,6 +490,19 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/51/45/72c2bf5ae3386407009fe51c40e548e41f70181bbe34a6477bb6078be047/fastar-0.12.0-cp315-cp315t-win32.whl", hash = "sha256:39dad3351f1399cd28e2e649b6651299ef857df6c745e598b00b4167dcf93dbc", size = 449932, upload-time = "2026-08-20T09:12:10.589Z" },
     { url = "https://files.pythonhosted.org/packages/7f/74/0adeb47b838c62ebd78bdf11ee2255e6e205ea176f9147978efa022ef855/fastar-0.12.0-cp315-cp315t-win_amd64.whl", hash = "sha256:00cda9a3f11871261a4e77a3b8f0eede85c9730fb7516811bcbcf96a2bb3b75b", size = 482858, upload-time = "2026-08-20T09:11:53.714Z" },
     { url = "https://files.pythonhosted.org/packages/bf/b9/b2ce5a79c57150d36aa8e0514dd65999ea76f091242aba93c403cd20e491/fastar-0.12.0-cp315-cp315t-win_arm64.whl", hash = "sha256:e8e0fb057b5c271f46f3300b539b0d3dab8c8cb2515205a37c818c2f68d16806", size = 458287, upload-time = "2026-08-20T09:11:36.952Z" },
+]
+
+[[package]]
+name = "geoalchemy2"
+version = "0.21.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "packaging" },
+    { name = "sqlalchemy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/53/06/9a315ab93f6c0d35541e8af593d3d69c23a7268076c831db4478c06ddb49/geoalchemy2-0.21.0.tar.gz", hash = "sha256:f6e458b7b6af6194d698a5bd4a45550b8f851bf3e4326b0d61b2a7b83ec1c6a4", size = 314900, upload-time = "2026-11-04T13:18:55.607Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fd/d5/ff6574cf2b205ad6160de7ed26cf47efece0990df06804dcd831034067b0/geoalchemy2-0.21.0-py3-none-any.whl", hash = "sha256:be189cf948a5987fa1d2ac8c8729330194f1c9c92efdbfb07a3df32854841b34", size = 109681, upload-time = "2026-11-04T13:18:54.332Z" },
 ]
 
 [[package]]
@@ -1275,6 +1292,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/ac/c3/e2a2b89f2d3e2179abd6d00ebd70bff6273f37fb3e0cc209f48b39d00cbf/requests-2.34.2.tar.gz", hash = "sha256:f288924cae4e29463698d6d60bc6a4da69c89185ad1e0bcc4104f584e960b9ed", size = 142856, upload-time = "2026-05-14T19:25:27.735Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a0/f4/c67b0b3f1b9245e8d266f0f112c500d50e5b4e83cb6f3b71b6528104182a/requests-2.34.2-py3-none-any.whl", hash = "sha256:2a0d60c172f83ac6ab31e4554906c0f3b3588d37b5cb939b1c061f4907e278e0", size = 73075, upload-time = "2026-05-14T19:25:26.443Z" },
+]
+
+[[package]]
+name = "respx"
+version = "0.23.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/98/4e55c9c486404ec12373708d015ebce157966965a5ebe7f28ff2c784d41b/respx-0.23.1.tar.gz", hash = "sha256:242dcc6ce6b5b9bf621f5870c82a63997e8e82bc7c947f9ffe272b8f3dd5a780", size = 29243, upload-time = "2026-04-08T14:37:16.008Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1d/4a/221da6ca167db45693d8d26c7dc79ccfc978a440251bf6721c9aaf251ac0/respx-0.23.1-py2.py3-none-any.whl", hash = "sha256:b18004b029935384bccfa6d7d9d74b4ec9af73a081cc28600fffc0447f4b8c1a", size = 25557, upload-time = "2026-04-08T14:37:14.613Z" },
 ]
 
 [[package]]

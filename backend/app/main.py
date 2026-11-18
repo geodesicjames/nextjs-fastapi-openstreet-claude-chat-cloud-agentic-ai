@@ -8,10 +8,15 @@ Run locally with:  uv run fastapi dev app/main.py
 """
 
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 
+import httpx
 from fastapi import FastAPI
 
-from app.routers import access_requests, admin, auth, chat, health
+from app.ratelimit import RateLimiter
+from app.routers import access_requests, admin, auth, chat, health, places
+from app.services.overpass import OverpassClient
 
 
 def create_app() -> FastAPI:
@@ -19,7 +24,23 @@ def create_app() -> FastAPI:
     # INFO. Uvicorn configures only its own loggers.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
 
-    app = FastAPI(title="Places API", version="0.1.0")
+    # One HTTP client (with its connection pool) for every outgoing call,
+    # closed on shutdown. The lifespan function is FastAPI's startup/shutdown
+    # hook: code before `yield` runs at startup, code after it at shutdown.
+    http = httpx.AsyncClient()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        yield
+        await http.aclose()
+
+    app = FastAPI(title="Places API", version="0.1.0", lifespan=lifespan)
+
+    # Process-wide objects, reached from dependencies via request.app.state.
+    # Built here rather than in lifespan so tests (which don't run lifespan)
+    # get them too, fresh for every app.
+    app.state.overpass = OverpassClient(http=http)
+    app.state.rate_limiter = RateLimiter()
 
     # No CORS middleware: browsers never call this API directly. They talk
     # only to Next.js, which calls FastAPI server-side and forwards the
@@ -30,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(chat.router)
     app.include_router(access_requests.router)
     app.include_router(admin.router)
+    app.include_router(places.router)
 
     return app
 

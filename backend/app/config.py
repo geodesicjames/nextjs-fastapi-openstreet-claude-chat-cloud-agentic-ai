@@ -8,6 +8,7 @@ pydantic-settings plays the role of Django's settings.py, with two differences:
 """
 
 from functools import lru_cache
+from ipaddress import IPv4Network, IPv6Network
 from typing import Literal
 
 from pydantic import Field, PostgresDsn
@@ -50,6 +51,41 @@ class Settings(BaseSettings):
     # Access requests per email address per 24 hours; extras are silently
     # dropped (same response, so the form can't be used to spam the owner).
     access_request_max_per_day: int = 3
+
+    # --- Map data (OpenStreetMap services) --------------------------------------
+    # Public OSM services require an identifying User-Agent (not a library
+    # default). Put a URL or email people can reach you at here; it is sent
+    # only to the OSM services, as part of that header.
+    osm_contact: str = ""
+    # A community-run public instance (Europe; .../api-na/interpreter for North
+    # America), used because the main overpass-api.de is often at capacity.
+    # It asks for an identifying User-Agent and at most 4 parallel queries per
+    # IP. The budgets below follow the stricter main-instance policy anyway.
+    overpass_url: str = "https://ovp.dresel.systems/api/interpreter"
+    # Server-side query timeout. Our queries cover at most a few km², which
+    # normally takes a second or two; the HTTP wait is this plus 5 seconds.
+    overpass_timeout_seconds: int = 10
+    # The public Overpass instance asks apps that use it regularly to stay
+    # under ~100 queries and ~10 MB a day across all users; keep a margin.
+    overpass_daily_query_budget: int = 80
+    overpass_daily_mb_budget: float = 8.0
+    # How long fetched places are trusted before a cell is fetched again.
+    place_cache_days: int = 30
+
+    # --- Rate limiting ----------------------------------------------------------
+    # Requests per minute per client IP on the public map endpoints.
+    places_rate_limit_per_minute: int = 60
+    # Peers allowed to tell us the real client IP via X-Forwarded-For (the
+    # Next.js server). Anyone else's X-Forwarded-For is ignored, so clients
+    # can't dodge rate limits by sending a fake header.
+    trusted_proxies: list[IPv4Network | IPv6Network] = Field(
+        default_factory=lambda: [IPv4Network("127.0.0.1/32"), IPv6Network("::1/128")]
+    )
+
+    @property
+    def user_agent(self) -> str:
+        contact = f" (+{self.osm_contact})" if self.osm_contact else ""
+        return f"PlacesPortfolioApp/0.1{contact}"
 
     @property
     def cookie_secure(self) -> bool:

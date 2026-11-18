@@ -7,6 +7,8 @@ dependencies = [
     "alembic>=1.20.1",
     "asyncpg>=0.32.0",
     "fastapi[standard]>=0.163.2",
+    "geoalchemy2>=0.21.0",
+    "httpx>=0.28.1",
     "pydantic-settings>=2.16.3",
     "sqlalchemy[asyncio]>=2.1.9",
 ]
@@ -18,10 +20,10 @@ package = false
 
 [dependency-groups]
 dev = [
-    "httpx>=0.28.1",
     "pyright>=1.1.414",
     "pytest>=9.2.0",
     "pytest-asyncio>=1.5.0",
+    "respx>=0.23.1",
     "ruff>=0.17.5",
 ]
 
