@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Best viewpoints around Calton Hill?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Calton Hill, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Calton Hill\", \"display_name\": \"Calton Hill, Broughton, New Town/Broughton, City of Edinburgh, Scotland, EH7 5AA, United Kingdom\", \"lat\": 55.9552543, \"lon\": -3.1827977, \"kind\": \"leisure:park\"}, {\"name\": \"Calton Hill\", \"display_name\": \"Calton Hill, City of Edinburgh, Scotland, EH7 5AA, United Kingdom\", \"lat\": 55.9555565, \"lon\": -3.1822564, \"kind\": \"natural:peak\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9552543,\n  \"lon\": -3.1827977,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"viewpoint\"\n  ]\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"00d456a3-84d0-4da2-bb5e-f08902bbacdb\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 47, \"lat\": 55.955129, \"lon\": -3.183521}, {\"place_id\": \"6bf686bb-e7ad-4a17-aa6c-99a27670178d\", \"name\": \"North Viewpoint\", \"category\": \"viewpoint\", \"distance_m\": 89, \"lat\": 55.956036, \"lon\": -3.182486}, {\"place_id\": \"38bf0ae0-e9a1-4374-ac67-da0c2078deac\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 97, \"lat\": 55.954389, \"lon\": -3.182997}, {\"place_id\": \"4bcf9637-da29-4586-b706-740aab99f9f8\", \"name\": \"South Viewpoint\", \"category\": \"viewpoint\", \"distance_m\": 175, \"lat\": 55.954119, \"lon\": -3.180849}, {\"place_id\": \"ab4969ec-3885-4eca-93be-4550ec64aa26\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 249, \"lat\": 55.953097, \"lon\": -3.1817}, {\"place_id\": \"ce10895c-cb89-4e78-a450-f6d65d98cd83\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 331, \"lat\": 55.955365, \"lon\": -3.188119}, {\"place_id\": \"b1ca72cf-a94a-4319-858a-39e714730ba8\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 448, \"lat\": 55.951381, \"lon\": -3.184749}, {\"place_id\": \"ec87039e-f169-4507-ad65-e010bc2ddac4\", \"name\": \"Photo trail\", \"category\": \"viewpoint\", \"distance_m\": 623, \"lat\": 55.952766, \"lon\": -3.191766}], \"total_found\": 8}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found eight viewpoints within about 600 m of Calton Hill. The closest ones are:\n\n- **North Viewpoint**, 90 m\n- **South Viewpoint**, 175 m\n- An unnamed viewpoint, 50 m from the hill's centre\n- An unnamed viewpoint, 100 m away\n- **Photo trail**, about 620 m to the west\n\nThe map data doesn't say what each one looks over, so the names are the best guide. The North and South Viewpoints are the most clearly labelled."
+ }
+]

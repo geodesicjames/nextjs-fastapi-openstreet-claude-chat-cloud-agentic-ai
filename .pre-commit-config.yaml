@@ -15,8 +15,11 @@ repos:
       - id: check-toml
       - id: check-yaml
         args: [--allow-multiple-documents] # pnpm-lock.yaml is multi-document
+      # Eval outputs (.claude/hillclimb/) are generated files, committed as written.
       - id: end-of-file-fixer
+        exclude: ^\.claude/hillclimb/
       - id: trailing-whitespace
+        exclude: ^\.claude/hillclimb/
 
   # Python lint + format. Picks up config from backend/pyproject.toml.
   - repo: https://github.com/astral-sh/ruff-pre-commit

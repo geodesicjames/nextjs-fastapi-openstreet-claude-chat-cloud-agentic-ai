@@ -1,0 +1,37 @@
+{
+  "harness_paths": [
+    "backend/evals/chat_tools/run_eval.py",
+    "backend/evals/chat_tools/grade.py",
+    "backend/evals/chat_tools/cases.json",
+    "backend/evals/chat_tools/fixture.json.gz"
+  ],
+  "metrics": [
+    {
+      "id": "tool_use",
+      "kind": "binary",
+      "label": "Tool use"
+    },
+    {
+      "id": "grounded",
+      "kind": "binary",
+      "label": "Grounded"
+    }
+  ],
+  "perf_fields": [
+    {
+      "id": "latency_s",
+      "label": "Latency",
+      "unit": "s"
+    },
+    {
+      "id": "tool_calls",
+      "label": "Tool calls"
+    },
+    {
+      "id": "cost_usd",
+      "label": "Cost",
+      "unit": "$"
+    }
+  ],
+  "harness_sha": "55bd95265fd364499b08806efdbeb825a15fdbb7a9694653a77c6a3a34a6abc4"
+}

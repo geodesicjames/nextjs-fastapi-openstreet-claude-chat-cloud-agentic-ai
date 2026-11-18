@@ -41,9 +41,11 @@ select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM"]
 # conftest switches DATABASE_URL to the test database before importing the
 # app (which builds its engine at import time), so its app imports come late.
 "tests/conftest.py" = ["E402"]
+# Same reason: the eval runner points DATABASE_URL at the eval database first.
+"evals/chat_tools/run_eval.py" = ["E402"]
 
 [tool.pyright]
-include = ["app", "tests", "alembic"]
+include = ["app", "tests", "alembic", "evals"]
 pythonVersion = "3.13"
 typeCheckingMode = "standard"
 venvPath = "."

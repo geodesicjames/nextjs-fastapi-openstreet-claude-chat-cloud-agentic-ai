@@ -1,0 +1,41 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "What are Oh Deer's opening hours? It's the café on Leith Walk."
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Oh Deer café, Leith Walk, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Gayfield, Broughton, New Town/Broughton, City of Edinburgh, Scotland, EH7 4AF, United Kingdom\", \"lat\": 55.9600285, \"lon\": -3.1825582, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Lorne, Pilrig, Leith, City of Edinburgh, Scotland, EH7 5HN, United Kingdom\", \"lat\": 55.9623057, \"lon\": -3.1793352, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Gayfield, Broughton, Leith, City of Edinburgh, Scotland, EH7 4AE, United Kingdom\", \"lat\": 55.958944, \"lon\": -3.1836545, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Lorne, Hillside, Leith, City of Edinburgh, Scotland, EH7 5HW, United Kingdom\", \"lat\": 55.9615161, \"lon\": -3.1803503, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Lorne, Pilrig, Leith, City of Edinburgh, Scotland, EH7 4NY, United Kingdom\", \"lat\": 55.9632462, \"lon\": -3.1782196, \"kind\": \"highway:primary\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9600285,\n  \"lon\": -3.1825582,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"cafe\"\n  ]\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"25054c3c-b85c-4a21-a1c7-78c7a2a7bdd4\", \"name\": \"The Nook\", \"category\": \"cafe\", \"distance_m\": 21, \"lat\": 55.960153, \"lon\": -3.182819}, {\"place_id\": \"e1fe34e6-b259-4d2a-8238-af58baa93a2f\", \"name\": \"Mera Lãhorë\", \"category\": \"cafe\", \"distance_m\": 36, \"lat\": 55.960352, \"lon\": -3.182533}, {\"place_id\": \"329637ca-3064-4ce1-a54f-aec95910a3f6\", \"name\": \"Guajira By Mamá Tingó\", \"category\": \"cafe\", \"distance_m\": 50, \"lat\": 55.95958, \"lon\": -3.182615}, {\"place_id\": \"419cdb51-43e5-47c8-beb2-5313b38dc028\", \"name\": \"Embo\", \"category\": \"cafe\", \"distance_m\": 52, \"lat\": 55.960478, \"lon\": -3.182351}, {\"place_id\": \"6751e7fb-f71e-436b-8d4c-ae7f196343c7\", \"name\": \"Cobblestone Cafe\", \"category\": \"cafe\", \"distance_m\": 93, \"lat\": 55.960538, \"lon\": -3.181369}, {\"place_id\": \"b111d89d-fb00-48c7-9b7c-26b1ddeee5c9\", \"name\": \"Oh Deer\", \"category\": \"cafe\", \"distance_m\": 113, \"lat\": 55.960689, \"lon\": -3.181176}, {\"place_id\": \"c31ebe0b-2bd6-4d19-a483-a3897b9a756f\", \"name\": \"ante\", \"category\": \"cafe\", \"distance_m\": 125, \"lat\": 55.959253, \"lon\": -3.184014}, {\"place_id\": \"9c6e4f18-50b7-4a0e-aae1-b20a1becffe3\", \"name\": \"kul\", \"category\": \"cafe\", \"distance_m\": 156, \"lat\": 55.958689, \"lon\": -3.183308}, {\"place_id\": \"000d330c-9823-4f40-83de-0cfe73f31ee8\", \"name\": \"Not Just Coffee\", \"category\": \"cafe\", \"distance_m\": 209, \"lat\": 55.961399, \"lon\": -3.180262}, {\"place_id\": \"d9f99d86-d309-482d-a6c9-b4fcf3011514\", \"name\": \"Elm Row Cafe Bistro\", \"category\": \"cafe\", \"distance_m\": 223, \"lat\": 55.958152, \"lon\": -3.183822}, {\"place_id\": \"9a6a6313-8252-47f2-81fa-717c1759b5b7\", \"name\": \"Kuna Café and Bakery\", \"category\": \"cafe\", \"distance_m\": 233, \"lat\": 55.958074, \"lon\": -3.183898}, {\"place_id\": \"47f126b6-2476-4423-980f-bc6e4b45dceb\", \"name\": \"Renroc\", \"category\": \"cafe\", \"distance_m\": 238, \"lat\": 55.95957, \"lon\": -3.178818}, {\"place_id\": \"19a9a708-3226-406d-8642-5fb3866edc4d\", \"name\": \"The Whispering Kettle\", \"category\": \"cafe\", \"distance_m\": 265, \"lat\": 55.961819, \"lon\": -3.179745}, {\"place_id\": \"16b722c7-ca58-4faa-a5f0-f950f9f91509\", \"name\": \"Santu Roastery\", \"category\": \"cafe\", \"distance_m\": 290, \"lat\": 55.95849, \"lon\": -3.186326}, {\"place_id\": \"fdec8cbd-6163-4a9a-914a-b165d163eb88\", \"name\": \"Café VI\", \"category\": \"cafe\", \"distance_m\": 301, \"lat\": 55.958412, \"lon\": -3.178676}, {\"place_id\": \"ea8e0375-5739-4015-ab92-3581f308f671\", \"name\": \"Word of Mouth Bistro Cafe\", \"category\": \"cafe\", \"distance_m\": 364, \"lat\": 55.96248, \"lon\": -3.178676}, {\"place_id\": \"fa54a8fd-9d8e-4c1f-b9a1-4f132a900fdd\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 384, \"lat\": 55.962891, \"lon\": -3.179106}, {\"place_id\": \"d11ec56e-3112-448b-b4f5-fdfb7427cb50\", \"name\": \"Tepuy\", \"category\": \"cafe\", \"distance_m\": 395, \"lat\": 55.962714, \"lon\": -3.178405}, {\"place_id\": \"769d8c2d-e9cf-410a-97c9-9cb2c5a70c8b\", \"name\": \"Nótt\", \"category\": \"cafe\", \"distance_m\": 423, \"lat\": 55.962984, \"lon\": -3.178279}, {\"place_id\": \"fd711b80-58bf-42df-9dd4-35c819291c04\", \"name\": \"Ripple Grove Coffee\", \"category\": \"cafe\", \"distance_m\": 446, \"lat\": 55.962439, \"lon\": -3.17683}], \"total_found\": 25}"
+ },
+ {
+  "role": "tool_call",
+  "name": "get_place_details",
+  "content": "{\n  \"place_id\": \"b111d89d-fb00-48c7-9b7c-26b1ddeee5c9\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"place_id\": \"b111d89d-fb00-48c7-9b7c-26b1ddeee5c9\", \"name\": \"Oh Deer\", \"category\": \"cafe\", \"lat\": 55.960689, \"lon\": -3.181176, \"tags\": {\"addr:city\": \"Edinburgh\", \"addr:housenumber\": \"73\", \"addr:postcode\": \"EH7 4AQ\", \"addr:street\": \"Elm Row\", \"amenity\": \"cafe\", \"check_date\": \"2025-12-07\", \"fhrs:id\": \"1723805\", \"name\": \"Oh Deer\", \"opening_hours\": \"Mo-Fr 07:30-18:30; Sa 08:30-18:30; Su 08:30-17:00\", \"source\": \"survey\", \"website\": \"https://www.ohdeer.uk/\"}, \"osm_url\": \"https://www.openstreetmap.org/node/2921809063\"}"
+ },
+ {
+  "role": "assistant",
+  "content": "Oh Deer's listed opening hours are:\n\n- Monday to Friday: 07:30 to 18:30\n- Saturday: 08:30 to 18:30\n- Sunday: 08:30 to 17:00\n\nThe map lists it at 73 Elm Row, EH7 4AQ, just off Leith Walk. The hours come from OpenStreetMap, which was last checked in December 2025, so it's worth confirming on the café's website (ohdeer.uk) before you go."
+ }
+]

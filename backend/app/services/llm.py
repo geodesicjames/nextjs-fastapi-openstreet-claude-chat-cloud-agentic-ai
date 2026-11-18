@@ -44,7 +44,10 @@ class ModelReply:
     content: list[dict[str, Any]]
     stop_reason: str | None  # end_turn | max_tokens | refusal | tool_use | ...
     usage: TokenUsage
-    model: str
+    model: str  # the model requested (prices are looked up by this)
+    # The model the API says actually answered. Normally equal to `model`;
+    # evals assert it, since a silently substituted model invalidates them.
+    served_model: str = ""
 
 
 StreamItem = TextDelta | ModelReply
@@ -116,6 +119,8 @@ class AnthropicChatModel:
             raise ModelUnavailableError("connection_error") from error
 
         usage = message.usage
+        if message.model != model:
+            logger.warning("Requested %s but %s answered", model, message.model)
         yield ModelReply(
             # exclude_none drops unset optional fields (e.g. text blocks'
             # `citations: null`) so the stored blocks replay cleanly.
@@ -128,4 +133,5 @@ class AnthropicChatModel:
                 cache_read_input_tokens=usage.cache_read_input_tokens or 0,
             ),
             model=model,
+            served_model=message.model,
         )

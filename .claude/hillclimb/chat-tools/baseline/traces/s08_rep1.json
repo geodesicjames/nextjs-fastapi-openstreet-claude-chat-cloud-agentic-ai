@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Any restaurants near Dean Village?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Dean Village, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Dean Village\", \"display_name\": \"Dean Village, West End, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9522594, \"lon\": -3.2182207, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9522594,\n  \"lon\": -3.2182207,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"restaurant\"\n  ]\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"788ef06e-1a2c-4083-bba5-2b867ae5998d\", \"name\": \"La Plaza Bistro\", \"category\": \"restaurant\", \"distance_m\": 383, \"lat\": 55.951497, \"lon\": -3.212218}, {\"place_id\": \"15716941-aa91-4c72-8de4-c6aeffcd3e91\", \"name\": \"Kismath\", \"category\": \"restaurant\", \"distance_m\": 426, \"lat\": 55.95137, \"lon\": -3.211558}, {\"place_id\": \"7f8d3f58-2a8d-4d93-9580-9f230e311456\", \"name\": \"Teuchters Bunker\", \"category\": \"restaurant\", \"distance_m\": 499, \"lat\": 55.949264, \"lon\": -3.212261}], \"total_found\": 3}"
+ },
+ {
+  "role": "assistant",
+  "content": "I used Dean Village in Edinburgh's West End as the centre. Within about 500 m, I found three restaurants:\n\n- **La Plaza Bistro**, 383 m\n- **Kismath**, 426 m\n- **Teuchters Bunker**, 499 m\n\nThe map data doesn't include opening hours or cuisine for these, so check before you go. I can look up more details for any of them, or widen the search if you'd like more options."
+ }
+]
