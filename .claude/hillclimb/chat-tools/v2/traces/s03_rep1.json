@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. When you list some of the results, say so rather than giving a count you haven't checked.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Where can I refill my water bottle near the Royal Mile?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Royal Mile, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Canongate\", \"display_name\": \"Canongate, Holyrood, Canongate, Old Town, City of Edinburgh, Scotland, EH8 8DD, United Kingdom\", \"lat\": 55.9515329, \"lon\": -3.1791979, \"kind\": \"highway:tertiary\"}, {\"name\": \"Lawnmarket\", \"display_name\": \"Lawnmarket, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2PQ, United Kingdom\", \"lat\": 55.9492923, \"lon\": -3.1935672, \"kind\": \"highway:pedestrian\"}, {\"name\": \"High Street\", \"display_name\": \"High Street, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 1PN, United Kingdom\", \"lat\": 55.949719, \"lon\": -3.1910551, \"kind\": \"highway:unclassified\"}, {\"name\": \"Castlehill\", \"display_name\": \"Castlehill, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 2ND, United Kingdom\", \"lat\": 55.9488969, \"lon\": -3.1954305, \"kind\": \"highway:pedestrian\"}, {\"name\": \"High Street\", \"display_name\": \"High Street, Abbeyhill, Old Town, City of Edinburgh, Scotland, EH1 1QX, United Kingdom\", \"lat\": 55.9499402, \"lon\": -3.1892573, \"kind\": \"highway:pedestrian\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9497,\n  \"lon\": -3.191,\n  \"radius_m\": 800,\n  \"categories\": [\n    \"drinking_water\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"bda6aa14-9f34-46c1-8bf3-41228e844cbb\", \"name\": \"Top Up Tap\", \"category\": \"drinking_water\", \"distance_m\": 74, \"lat\": 55.949933, \"lon\": -3.189879}, {\"place_id\": \"e8d0683a-8768-41ed-b34f-0669b7520010\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 284, \"lat\": 55.951938, \"lon\": -3.188815}, {\"place_id\": \"cde4bce8-02f8-4bb1-8d1a-1f47712ccdc7\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 294, \"lat\": 55.947323, \"lon\": -3.188929}, {\"place_id\": \"9e20bf41-3865-40dc-a4a5-c572052aae98\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 302, \"lat\": 55.952115, \"lon\": -3.188763}, {\"place_id\": \"43ab8cf2-054e-465f-a1f1-4338d1e9d8f4\", \"name\": \"Top Up Tap\", \"category\": \"drinking_water\", \"distance_m\": 408, \"lat\": 55.947496, \"lon\": -3.196249}, {\"place_id\": \"d8559bf8-90b6-4548-bff5-389279f203c6\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 440, \"lat\": 55.946139, \"lon\": -3.187905}, {\"place_id\": \"98ff5918-aeb9-4f0d-805c-3b4e137a9679\", \"name\": null, \"category\": \"drinking_water\", \"distance_m\": 552, \"lat\": 55.954473, \"lon\": -3.188538}], \"total_found\": 7}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found 7 drinking water points within about 800 m of the High Street section of the Royal Mile. The closest are:\n\n- **Top Up Tap**, 74 m\n- An unnamed drinking water point, 284 m\n- An unnamed drinking water point, 294 m\n- An unnamed drinking water point, 302 m\n- **Top Up Tap**, 408 m\n\nDistances are measured from the High Street point I searched from, so they're approximate. I can check opening hours or other details for any of these if you'd like."
+ }
+]

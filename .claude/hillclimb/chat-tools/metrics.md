@@ -42,6 +42,20 @@ the 44 others. On `grounded`, 7 cases moved in both directions, none involving `
 first direct measurement of run-to-run noise: **about a quarter of cases can flip between runs**, so
 `grounded` only detects large changes at this size. Median latency 3.9 s; the run cost $0.55.
 
+## v2: grounding guidance in the system prompt (2026-11-18)
+
+26 cases × 4 reps. "Before" is baseline + v1 (4 runs per case; the name filter didn't affect
+grounding).
+
+| metric | before | v2 | paired difference (95% CI) |
+| --- | --- | --- | --- |
+| grounded | 84/104 = 81% | **91/104 = 88%** | +6.7 points (−4.8 to +18.3) |
+| tool_use | 103/104 | 104/104 | +1.0 point |
+
+A likely improvement, but not conclusive. 8 cases improved and 3 got worse. Two of the new failures
+are worth noting: s04 now gives an exact count and gets it wrong, and s02 misreads `female=yes` as
+"female-only". Answer length is unchanged (median 80 words); the run cost $1.05.
+
 ## Known limitations
 
 - **Judge noise isn't measured yet.** The final grade came from two re-grades that changed the

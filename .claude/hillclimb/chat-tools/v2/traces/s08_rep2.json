@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. When you list some of the results, say so rather than giving a count you haven't checked.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Any restaurants near Dean Village?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Dean Village, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Dean Village\", \"display_name\": \"Dean Village, West End, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9522594, \"lon\": -3.2182207, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9522594,\n  \"lon\": -3.2182207,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"restaurant\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"1baceac7-fd91-43ed-bbea-7c14d8551014\", \"name\": \"La Plaza Bistro\", \"category\": \"restaurant\", \"distance_m\": 383, \"lat\": 55.951497, \"lon\": -3.212218}, {\"place_id\": \"0e2fabcb-4786-4f87-bd68-6684dfa522bc\", \"name\": \"Kismath\", \"category\": \"restaurant\", \"distance_m\": 426, \"lat\": 55.95137, \"lon\": -3.211558}, {\"place_id\": \"398d5dec-ecf6-43e9-b7fb-8c1f5159ea5d\", \"name\": \"Teuchters Bunker\", \"category\": \"restaurant\", \"distance_m\": 499, \"lat\": 55.949264, \"lon\": -3.212261}], \"total_found\": 3}"
+ },
+ {
+  "role": "assistant",
+  "content": "Yes, I found 3 restaurants within about 500 m of Dean Village (the centre of the Dean Village area in Edinburgh's West End):\n\n- **La Plaza Bistro**, 383 m\n- **Kismath**, 426 m\n- **Teuchters Bunker**, 499 m\n\nI can check opening hours or other details for any of these if you'd like."
+ }
+]

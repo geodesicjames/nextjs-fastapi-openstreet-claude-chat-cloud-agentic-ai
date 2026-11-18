@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. When you list some of the results, say so rather than giving a count you haven't checked.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Best viewpoints around Calton Hill?"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Calton Hill, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Calton Hill\", \"display_name\": \"Calton Hill, Broughton, New Town/Broughton, City of Edinburgh, Scotland, EH7 5AA, United Kingdom\", \"lat\": 55.9552543, \"lon\": -3.1827977, \"kind\": \"leisure:park\"}, {\"name\": \"Calton Hill\", \"display_name\": \"Calton Hill, City of Edinburgh, Scotland, EH7 5AA, United Kingdom\", \"lat\": 55.9555565, \"lon\": -3.1822564, \"kind\": \"natural:peak\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9552543,\n  \"lon\": -3.1827977,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"viewpoint\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"2d4d0036-742e-4fd6-9dd9-7aba4984e4e3\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 47, \"lat\": 55.955129, \"lon\": -3.183521}, {\"place_id\": \"935235a9-d738-4c8c-87b3-9c3972809387\", \"name\": \"North Viewpoint\", \"category\": \"viewpoint\", \"distance_m\": 89, \"lat\": 55.956036, \"lon\": -3.182486}, {\"place_id\": \"2f2af151-c6fa-40ac-83de-062acb59e005\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 97, \"lat\": 55.954389, \"lon\": -3.182997}, {\"place_id\": \"d76aed1b-e7f5-410b-be55-a19b61505486\", \"name\": \"South Viewpoint\", \"category\": \"viewpoint\", \"distance_m\": 175, \"lat\": 55.954119, \"lon\": -3.180849}, {\"place_id\": \"868a6ce6-92d8-44e8-8098-2ae61363f56c\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 249, \"lat\": 55.953097, \"lon\": -3.1817}, {\"place_id\": \"73abb985-890d-4d20-aa77-961fdd1785ba\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 331, \"lat\": 55.955365, \"lon\": -3.188119}, {\"place_id\": \"9e11b55a-61cc-4001-9ea2-fa6bd7f0277d\", \"name\": null, \"category\": \"viewpoint\", \"distance_m\": 448, \"lat\": 55.951381, \"lon\": -3.184749}, {\"place_id\": \"470a633c-c326-41c7-8443-73d45bc40130\", \"name\": \"Photo trail\", \"category\": \"viewpoint\", \"distance_m\": 623, \"lat\": 55.952766, \"lon\": -3.191766}], \"total_found\": 8}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found 8 viewpoints within 1 km of Calton Hill. The closest ones:\n\n- **North Viewpoint**, 89 m\n- **South Viewpoint**, 175 m\n- **Photo trail**, 623 m\n\nFour more unnamed viewpoints are between 47 m and 448 m away, and the map shows all of them. The data doesn't say what each one looks over, so I can't compare them beyond distance."
+ }
+]
