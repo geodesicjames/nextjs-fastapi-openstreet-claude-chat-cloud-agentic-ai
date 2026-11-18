@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from anthropic.types import ToolParam
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, Field, ValidationError, field_validator
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -75,7 +75,9 @@ TOOLS: list[ToolParam] = [
         "description": (
             "Find places of the given categories within a radius of a point, nearest "
             "first. Call this when the user asks what is near somewhere, or for "
-            "recommendations of a kind of place. Only recommend places this returns."
+            "recommendations of a kind of place. Only recommend places this returns. "
+            "To find one specific place the user names (e.g. to look up its details), "
+            "pass its name and a generous radius such as 1000."
         ),
         "strict": True,
         "input_schema": {
@@ -94,8 +96,16 @@ TOOLS: list[ToolParam] = [
                     "items": {"type": "string", "enum": list(CATEGORIES)},
                     "description": "One or more categories to include.",
                 },
+                "name": {
+                    "anyOf": [{"type": "string"}, {"type": "null"}],
+                    "description": (
+                        "Part of a place's name to match, ignoring case and accents "
+                        "(e.g. 'whispering kettle'), up to 100 characters. "
+                        "null to include every place."
+                    ),
+                },
             },
-            "required": ["lat", "lon", "radius_m", "categories"],
+            "required": ["lat", "lon", "radius_m", "categories", "name"],
             "additionalProperties": False,
         },
     },
@@ -161,6 +171,14 @@ class SearchPlacesIn(BaseModel):
     lon: float = Field(ge=-180, le=180)
     radius_m: int = Field(ge=50, le=2000)
     categories: list[Category] = Field(min_length=1)
+    name: str | None = Field(default=None, max_length=100)
+
+    @field_validator("name")
+    @classmethod
+    def _blank_name_is_none(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
 
 
 class PlaceIdIn(BaseModel):
@@ -249,7 +267,13 @@ async def _search_places(ctx: ToolContext, args: SearchPlacesIn) -> ToolOutcome:
         return _error("Search radius too large here; use a smaller radius_m.")
 
     result = await places.search_places(
-        ctx.db, ctx.settings, ctx.overpass, bbox, list(args.categories)
+        ctx.db,
+        ctx.settings,
+        ctx.overpass,
+        bbox,
+        list(args.categories),
+        name=args.name,
+        nearest_to=(args.lat, args.lon),
     )
     nearby = sorted(
         ((_distance_m(args.lat, args.lon, hit.lat, hit.lon), hit) for hit in result.hits),
@@ -269,9 +293,15 @@ async def _search_places(ctx: ToolContext, args: SearchPlacesIn) -> ToolOutcome:
         for d, hit in shown
     ]
     data: dict[str, Any] = {"places": found, "total_found": len(nearby)}
+    if args.name and not found:
+        data["note"] = (
+            f"No {'/'.join(args.categories)} matching '{args.name}' within {args.radius_m} m. "
+            "Try another spelling, a larger radius or other categories."
+        )
     if not result.complete:
         # Tell Claude, so it can tell the user the list may be missing places.
-        data["note"] = "Some of this area couldn't be loaded right now, so places may be missing."
+        missing = "Some of this area couldn't be loaded right now, so places may be missing."
+        data["note"] = f"{data['note']} {missing}" if "note" in data else missing
     map_places = [{k: p[k] for k in ("place_id", "name", "category", "lat", "lon")} for p in found]
     summary = f"Found {len(nearby)} place{'s' if len(nearby) != 1 else ''}"
     return _ok(data, summary, map_places)

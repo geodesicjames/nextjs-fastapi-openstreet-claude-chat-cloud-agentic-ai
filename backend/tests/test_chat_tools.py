@@ -5,6 +5,7 @@ PostGIS. Place data and geocoding answers are put in the caches up front so
 no test calls Overpass or Nominatim (one uses respx to make Overpass fail).
 """
 
+import itertools
 import json
 import uuid
 from datetime import UTC, datetime
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import ChatMessage, GeocodeResult, LlmUsage, Place, PlaceCell, SavedPlace, User
 from app.services import chat_tools
+from app.services import places as places_service
 from app.services.chat_tools import TOOLS
 from app.services.grid import BBox, cells_for
 from app.services.llm import ModelUnavailableError
@@ -422,3 +424,148 @@ async def test_save_place_and_manage_saved_places(
 
 async def test_saved_places_need_sign_in(client: AsyncClient) -> None:
     assert (await client.get("/saved-places")).status_code == 401
+
+
+# --- Name filter (issue #29) ----------------------------------------------------------------
+
+
+_osm_ids = itertools.count(5000)
+
+
+async def add_cafes(db: AsyncSession, specs: list[tuple[str, float]]) -> None:
+    """Cafés due north of LEITH at the given distances (metres)."""
+    now = datetime.now(UTC)
+    for name, metres in specs:
+        lat = LEITH["lat"] + metres / 111_320
+        db.add(
+            Place(
+                osm_type="node",
+                osm_id=next(_osm_ids),
+                name=name,
+                category="cafe",
+                tags={"name": name},
+                geom=f"SRID=4326;POINT({LEITH['lon']} {lat})",
+                fetched_at=now,
+            )
+        )
+    await db.commit()
+
+
+async def search_result(
+    client: AsyncClient, fake_model: FakeChatModel, args: dict[str, Any]
+) -> dict[str, Any]:
+    fake_model.replies += [wants_tools(tool_use("search_places", args)), reply("ok")]
+    conversation_id = await new_conversation(client)
+    await send(client, conversation_id, "find it")
+    return result_json(tool_results(fake_model.calls[-1])[0])
+
+
+async def test_name_finds_a_place_beyond_the_nearest_twenty(
+    client: AsyncClient,
+    db: AsyncSession,
+    chatter: User,
+    fake_model: FakeChatModel,
+    edinburgh: dict[str, Place],
+) -> None:
+    # The eval's d02 case: 25 cafés nearer than the one asked about.
+    await add_cafes(db, [(f"Cafe {i:02}", 10 + i * 10) for i in range(25)])
+    await add_cafes(db, [("The Whispering Kettle", 600)])
+    args = {**LEITH, "radius_m": 1000, "categories": ["cafe"]}
+
+    unnamed = await search_result(client, fake_model, {**args, "name": None})
+    assert "The Whispering Kettle" not in [p["name"] for p in unnamed["places"]]
+
+    named = await search_result(client, fake_model, {**args, "name": "whispering KETTLE"})
+    assert [p["name"] for p in named["places"]] == ["The Whispering Kettle"]
+
+
+async def test_name_ignores_accents(
+    client: AsyncClient,
+    db: AsyncSession,
+    chatter: User,
+    fake_model: FakeChatModel,
+    edinburgh: dict[str, Place],
+) -> None:
+    await add_cafes(db, [("Söderberg", 200)])
+    found = await search_result(
+        client, fake_model, {**LEITH, "radius_m": 500, "categories": ["cafe"], "name": "Soderberg"}
+    )
+    assert [p["name"] for p in found["places"]] == ["Söderberg"]
+
+
+async def test_name_wildcards_are_literal(
+    client: AsyncClient,
+    db: AsyncSession,
+    chatter: User,
+    fake_model: FakeChatModel,
+    edinburgh: dict[str, Place],
+) -> None:
+    await add_cafes(db, [("100% Coffee", 100), ("Big_Cup", 150)])
+    args = {**LEITH, "radius_m": 500, "categories": ["cafe"]}
+
+    pct = await search_result(client, fake_model, {**args, "name": "%"})
+    assert [p["name"] for p in pct["places"]] == ["100% Coffee"]  # not every café
+    under = await search_result(client, fake_model, {**args, "name": "g_c"})
+    assert [p["name"] for p in under["places"]] == ["Big_Cup"]
+
+
+async def test_no_name_match_says_so(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel, edinburgh: dict[str, Place]
+) -> None:
+    found = await search_result(
+        client,
+        fake_model,
+        {**LEITH, "radius_m": 500, "categories": ["cafe"], "name": "Nowhere Cafe"},
+    )
+    assert found["places"] == []
+    assert "No cafe matching 'Nowhere Cafe' within 500 m" in found["note"]
+
+
+@pytest.mark.parametrize("name", ["", "   "])
+async def test_blank_name_means_no_filter(
+    client: AsyncClient,
+    chatter: User,
+    fake_model: FakeChatModel,
+    edinburgh: dict[str, Place],
+    name: str,
+) -> None:
+    found = await search_result(
+        client, fake_model, {**LEITH, "radius_m": 500, "categories": ["cafe"], "name": name}
+    )
+    assert [p["name"] for p in found["places"]] == ["Bean There"]
+
+
+async def test_overlong_name_is_rejected(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel, edinburgh: dict[str, Place]
+) -> None:
+    fake_model.replies += [
+        wants_tools(
+            tool_use(
+                "search_places",
+                {**LEITH, "radius_m": 500, "categories": ["cafe"], "name": "x" * 101},
+            )
+        ),
+        reply("ok"),
+    ]
+    await send(client, await new_conversation(client), "find it")
+    [result] = tool_results(fake_model.calls[-1])
+    assert result["is_error"] is True
+    assert "name" in result_json(result)["error"]
+
+
+async def test_nearest_places_survive_the_result_cap(
+    client: AsyncClient,
+    db: AsyncSession,
+    chatter: User,
+    fake_model: FakeChatModel,
+    edinburgh: dict[str, Place],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # With more matches than the cap, the nearest must be kept, not the
+    # alphabetically first (the bug the name filter work uncovered).
+    monkeypatch.setattr(places_service, "MAX_RESULTS", 2)
+    await add_cafes(db, [("Zebra Cafe", 20), ("Yak Cafe", 40), ("Aardvark Cafe", 900)])
+    found = await search_result(
+        client, fake_model, {**LEITH, "radius_m": 1000, "categories": ["cafe"], "name": None}
+    )
+    assert [p["name"] for p in found["places"]] == ["Zebra Cafe", "Yak Cafe"]

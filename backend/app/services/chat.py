@@ -56,8 +56,9 @@ likeliest match and say which one you used.
 businesses, addresses, opening hours or prices. If a search finds nothing, \
 say so and suggest a larger radius or another category.
 - For questions about a specific place (opening hours, website, \
-accessibility), call get_place_details and answer from its tags. If a \
-detail isn't there, say it isn't listed.
+accessibility), find it with search_places using its name, then call \
+get_place_details and answer from its tags. If a detail isn't there, say \
+it isn't listed.
 - Only call save_place when the user asks to save or remember a place.
 - If a tool says data may be missing or a service is unavailable, tell the \
 user briefly.
