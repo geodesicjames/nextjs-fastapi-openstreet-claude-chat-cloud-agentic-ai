@@ -43,3 +43,6 @@ Thumbs.db
 .claude/hillclimb/**/trajectory/
 .claude/hillclimb/**/state.json
 .claude/hillclimb/**/*.before-regrade.jsonl
+
+# Database dumps from scripts/backup-db.sh
+/backups/

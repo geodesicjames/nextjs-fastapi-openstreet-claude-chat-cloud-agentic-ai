@@ -58,7 +58,9 @@ frontend/
   lib/chat.ts      chat types and the streamed-reply (SSE) reader
   lib/markdown.tsx tiny Markdown renderer for chat replies (React elements only)
   scripts/         copy-maplibre-worker.mjs (see Decisions)
-docker-compose.yml
+docker-compose.yml       development stack (source mounted, auto-reload)
+docker-compose.prod.yml  production stack (see "Production stack")
+scripts/backup-db.sh     database backup (pg_dump, optional upload to S3)
 ```
 
 ## Local setup
@@ -256,6 +258,23 @@ code checks have offline tests (`tests/test_eval_grader.py`) that run in CI. Res
 to `.claude/hillclimb/chat-tools/<variant>/`; the report is built with the Claude API
 skill's `build-report-lite.mjs`.
 
+### Production stack
+
+`docker-compose.prod.yml` is what runs on the server, and you can run it locally too:
+
+```bash
+docker compose -f docker-compose.prod.yml build
+docker compose -f docker-compose.prod.yml run --rm migrate   # apply migrations
+FRONTEND_PORT=3100 docker compose -f docker-compose.prod.yml up -d
+scripts/backup-db.sh                                         # pg_dump; restore steps inside
+```
+
+It uses the `prod` stages of the Dockerfiles. The backend has no dev dependencies, runs as a
+non-root user with a single uvicorn worker and no reload, and writes JSON logs. The frontend is a
+Next.js `standalone` server running as the `node` user. Only the frontend publishes a port.
+Migrations are an explicit step. Settings come from `ENV_FILE` (`.env` by default). CI builds both
+production images on every PR.
+
 ### Git hooks (once per clone)
 
 ```bash
@@ -343,5 +362,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **OSM links only if http(s)** | Anyone can edit OSM tags, so a `website` tag could be a `javascript:` URL. The details panel only links http and https addresses. |
 | **Evals call the real entry point with stubbed external services** | The eval runs `chat.stream_reply` with the real model and real tools, so prompt, tool and loop changes are all measured. Only Overpass and Nominatim are replaced, by a frozen fixture and a gazetteer, so runs are reproducible and cost nothing in OSM usage. |
 | **Tool use graded in code, grounding by a judge** | Whether the right tools were called with sensible arguments is checkable in code: properties, not an exact sequence. Whether an answer invents places or facts needs judgement, so a different model (Sonnet 5.5) grades it from per-claim verdicts, checked by known-negative tests. |
+| **One EC2 instance running Docker Compose** | About $20 a month, against about $50 for Fargate + RDS + ALB, which matters for a demo. The production compose file mirrors development, so local and server run the same images. The trade-offs: no high availability, a short restart on deploy, and the database's backups are ours to manage (nightly `pg_dump` to S3, with a tested restore). |
+| **Dev and prod stages in one Dockerfile** | Shared base image and dependency layers. `dev` bind-mounts the source with reload; `prod` copies only what runs, with no dev dependencies, as a non-root user. |
+| **Migrations as a deploy step, not on startup** | Running `alembic upgrade` when a container starts races if two start at once, and hides a failed migration behind a crash loop. In production it's a one-off `migrate` service the deploy runs first. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |

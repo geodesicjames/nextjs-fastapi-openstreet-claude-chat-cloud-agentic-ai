@@ -1,0 +1,78 @@
+# Production stack: what runs on the server (and can be checked locally).
+#
+#   docker compose -f docker-compose.prod.yml build
+#   docker compose -f docker-compose.prod.yml run --rm migrate   # apply migrations
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# Differences from docker-compose.yml (development):
+# - production images (`prod` stages): no source mounts, no reload, non-root;
+# - only the frontend publishes a port; the backend and database are reachable
+#   only on this stack's private network (the browser talks only to Next.js);
+# - migrations are an explicit step (the `migrate` service), run before `up`;
+# - settings come from ENV_FILE (default .env), written on the server from
+#   SSM Parameter Store at deploy time;
+# - images can be prebuilt (BACKEND_IMAGE / FRONTEND_IMAGE, e.g. from ECR);
+#   the build sections are used when they aren't set.
+
+name: places-prod
+
+x-backend: &backend
+  image: ${BACKEND_IMAGE:-places-backend:local}
+  build:
+    context: ./backend
+    target: prod
+  env_file:
+    - path: ${ENV_FILE:-.env}
+      required: true
+  environment:
+    ENVIRONMENT: production
+    DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    # Next.js and the backend share this network; trust X-Forwarded-For from it.
+    TRUSTED_PROXIES: '["172.16.0.0/12"]'
+  depends_on:
+    db:
+      condition: service_healthy
+
+services:
+  db:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  # One-off: `docker compose -f docker-compose.prod.yml run --rm migrate`
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    profiles: [migrate]
+    restart: "no"
+
+  backend:
+    <<: *backend
+    restart: unless-stopped
+
+  frontend:
+    image: ${FRONTEND_IMAGE:-places-frontend:local}
+    build:
+      context: ./frontend
+      target: prod
+    environment:
+      API_URL: http://backend:8000
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

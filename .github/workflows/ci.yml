@@ -102,6 +102,27 @@ jobs:
       - name: Build
         run: pnpm build
 
+  images:
+    name: Production images (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Catch a broken Dockerfile here rather than at deploy time.
+      - name: Build backend (prod stage)
+        run: docker build --target prod -t places-backend:ci backend
+
+      - name: Build frontend (prod stage)
+        run: docker build --target prod -t places-frontend:ci frontend
+
+      - name: Validate docker-compose.prod.yml
+        env:
+          ENV_FILE: .env.example
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: ci
+        run: docker compose -f docker-compose.prod.yml config --quiet
+
   secrets:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

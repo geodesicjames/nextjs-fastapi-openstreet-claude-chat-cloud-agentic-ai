@@ -26,7 +26,9 @@ Theme: TBD (e.g. dog-friendly hikes, bike routes) — keep naming generic until 
   pytest + httpx AsyncClient. pnpm, ESLint, Prettier for the frontend;
   Playwright for e2e later.
 - **CI:** GitHub Actions — lint, type check, tests on every PR.
-- **Cloud (later):** one cloud, likely AWS (ECS Fargate, RDS), Terraform, GitHub OIDC deploys.
+- **Cloud:** AWS. A single EC2 instance (t4g.small) running `docker-compose.prod.yml` behind
+  CloudFront, Postgres+PostGIS in a container with nightly backups to S3, Terraform, GitHub
+  OIDC deploys via SSM, and SES for email. Chosen over Fargate + RDS to keep the demo at about $20 a month.
 
 ## Repo layout
 Monorepo:
