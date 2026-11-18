@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "What's a good café near the Meadows? I might go tomorrow."
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"The Meadows, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"The Meadows\", \"display_name\": \"The Meadows, Tollcross, City of Edinburgh, Scotland, EH9 1JZ, United Kingdom\", \"lat\": 55.9423415, \"lon\": -3.1942933, \"kind\": \"leisure:park\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9423415,\n  \"lon\": -3.1942933,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"cafe\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"f7068b8f-aef4-4daf-bd63-840edfd84d38\", \"name\": \"Lee's TeaHouse\", \"category\": \"cafe\", \"distance_m\": 142, \"lat\": 55.943606, \"lon\": -3.194018}, {\"place_id\": \"be329fc6-babc-4a10-9eab-842983fa29ba\", \"name\": \"Caffè Nero\", \"category\": \"cafe\", \"distance_m\": 151, \"lat\": 55.943663, \"lon\": -3.194858}, {\"place_id\": \"7f2c8aaf-cc09-4bdc-b8a3-6d14ee013066\", \"name\": \"Söderberg Bakery Shop\", \"category\": \"cafe\", \"distance_m\": 192, \"lat\": 55.943703, \"lon\": -3.192405}, {\"place_id\": \"d47556c4-c0e4-42ca-915d-ec7a1ad94a93\", \"name\": \"Take Five Cafe\", \"category\": \"cafe\", \"distance_m\": 193, \"lat\": 55.943991, \"lon\": -3.193334}, {\"place_id\": \"0c3180e9-e962-4a01-9aff-42b5f557167e\", \"name\": \"Amla Cafe\", \"category\": \"cafe\", \"distance_m\": 197, \"lat\": 55.940607, \"lon\": -3.194961}, {\"place_id\": \"38b3140c-ea78-4819-93cb-0b6b7240e114\", \"name\": \"Pavilion Cafe\", \"category\": \"cafe\", \"distance_m\": 199, \"lat\": 55.94058, \"lon\": -3.194838}, {\"place_id\": \"61d4f463-d94c-4a2e-92ab-438fae07f3e9\", \"name\": \"Söderberg\", \"category\": \"cafe\", \"distance_m\": 213, \"lat\": 55.943623, \"lon\": -3.191742}, {\"place_id\": \"f12d1e1f-3e05-48b9-854a-1a8b82504a5b\", \"name\": \"The Breakfast Bothy\", \"category\": \"cafe\", \"distance_m\": 215, \"lat\": 55.940448, \"lon\": -3.194952}, {\"place_id\": \"bbaab848-83c4-4e4f-9d92-4eedeb4effb1\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 242, \"lat\": 55.944059, \"lon\": -3.191918}, {\"place_id\": \"c7e3c4aa-b82c-4776-a9ec-b2bec5a497bf\", \"name\": \"Uplands Roast Coffee\", \"category\": \"cafe\", \"distance_m\": 264, \"lat\": 55.942495, \"lon\": -3.19006}, {\"place_id\": \"67e83899-e3d0-484f-8614-32f7c12152b4\", \"name\": \"The Chocolate Box\", \"category\": \"cafe\", \"distance_m\": 287, \"lat\": 55.943031, \"lon\": -3.189848}, {\"place_id\": \"adbd6a4e-95f5-4062-901a-895edb3b197f\", \"name\": \"Agora\", \"category\": \"cafe\", \"distance_m\": 293, \"lat\": 55.944106, \"lon\": -3.190803}, {\"place_id\": \"b379e557-468a-4c5c-8d19-4dba8c577731\", \"name\": \"Library Café\", \"category\": \"cafe\", \"distance_m\": 306, \"lat\": 55.942822, \"lon\": -3.189455}, {\"place_id\": \"30ca24da-51f6-4e4a-a1cf-138efc0fa771\", \"name\": \"Leaf & Bean Deli Café\", \"category\": \"cafe\", \"distance_m\": 323, \"lat\": 55.939448, \"lon\": -3.194823}, {\"place_id\": \"700d5e70-ce83-47f3-9632-61a9fd640d46\", \"name\": \"Tupiniquim\", \"category\": \"cafe\", \"distance_m\": 364, \"lat\": 55.945192, \"lon\": -3.191431}, {\"place_id\": \"7e9c20b5-8a9d-4f17-ac45-7e7d8ee84d3a\", \"name\": \"Detour Espresso\", \"category\": \"cafe\", \"distance_m\": 373, \"lat\": 55.939317, \"lon\": -3.191688}, {\"place_id\": \"a0b7c156-b082-4816-99fa-f6afbfa25a5d\", \"name\": \"Black Sheep Coffee\", \"category\": \"cafe\", \"distance_m\": 390, \"lat\": 55.945459, \"lon\": -3.191421}, {\"place_id\": \"4a44af64-b187-426f-b411-5a56aa2b2b0c\", \"name\": \"The Cafe\", \"category\": \"cafe\", \"distance_m\": 411, \"lat\": 55.945442, \"lon\": -3.197877}, {\"place_id\": \"309ead66-1fa1-4485-a41e-21acb5a1cc2c\", \"name\": \"Thomas J. Walls\", \"category\": \"cafe\", \"distance_m\": 426, \"lat\": 55.945796, \"lon\": -3.191336}, {\"place_id\": \"55a8f1ff-8548-438c-846c-4daada79024c\", \"name\": \"Beatnik\", \"category\": \"cafe\", \"distance_m\": 433, \"lat\": 55.942789, \"lon\": -3.201197}], \"total_found\": 30}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found plenty of cafés within about 500 m of The Meadows. The map data doesn't include ratings, so I can't say which is \"good,\" but these are close:\n\n- **Lee's TeaHouse**, 140 m\n- **Caffè Nero**, 150 m\n- **Söderberg Bakery Shop**, 190 m\n- **Take Five Cafe**, 190 m\n- **Pavilion Cafe**, 200 m (in the park itself)\n- **The Breakfast Bothy**, 215 m\n\nIf you tell me which kind of place you like (a quiet tea room, a bakery, a coffee shop), I can narrow it down. I can also check opening hours for tomorrow, though the map data may be incomplete or out of date."
+ }
+]
