@@ -44,15 +44,21 @@ TEST_DATABASE_URL = _test_database_url()
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL.render_as_string(hide_password=False)
 get_settings.cache_clear()
 
-import pytest  # noqa: E402
-from fastapi import FastAPI  # noqa: E402
-from httpx import ASGITransport, AsyncClient  # noqa: E402
-from sqlalchemy.ext.asyncio import AsyncSession  # noqa: E402
+import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import engine  # noqa: E402
-from app.deps import get_db  # noqa: E402
-from app.main import create_app  # noqa: E402
-from app.services.email import get_email_sender  # noqa: E402
+from app.db import engine
+from app.deps import (
+    get_chat_model,
+    get_db,
+)
+from app.main import create_app
+from app.models import User
+from app.services.email import get_email_sender
+from tests.chat_helpers import FakeChatModel
+from tests.factories import grant, signed_in_user
 
 
 async def _create_test_database() -> None:
@@ -172,3 +178,18 @@ def use_settings(app: FastAPI) -> Callable[..., None]:
         app.dependency_overrides[get_settings] = lambda: settings
 
     return apply
+
+
+@pytest.fixture
+def fake_model(app: FastAPI) -> FakeChatModel:
+    model = FakeChatModel()
+    app.dependency_overrides[get_chat_model] = lambda: model
+    return model
+
+
+@pytest.fixture
+async def chatter(db: AsyncSession, client: AsyncClient) -> User:
+    """A signed-in user with an active chat grant."""
+    user = await signed_in_user(db, client)
+    await grant(db, user)
+    return user

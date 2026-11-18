@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol
 
 import anthropic
-from anthropic.types import MessageParam
+from anthropic.types import MessageParam, ToolChoiceParam, ToolParam
 
 from app.services.pricing import TokenUsage
 
@@ -66,6 +66,8 @@ class ChatModel(Protocol):
         messages: list[MessageParam],
         max_tokens: int,
         effort: Effort,
+        tools: list[ToolParam] | None = None,
+        tool_choice: ToolChoiceParam | None = None,
     ) -> AsyncIterator[StreamItem]:
         """Yield TextDeltas as they arrive, then exactly one ModelReply."""
         ...
@@ -83,6 +85,8 @@ class AnthropicChatModel:
         messages: list[MessageParam],
         max_tokens: int,
         effort: Effort,
+        tools: list[ToolParam] | None = None,
+        tool_choice: ToolChoiceParam | None = None,
     ) -> AsyncIterator[StreamItem]:
         try:
             async with self.client.messages.stream(
@@ -93,6 +97,8 @@ class AnthropicChatModel:
                 thinking={"type": "adaptive"},
                 output_config={"effort": effort},
                 cache_control={"type": "ephemeral"},
+                tools=tools if tools is not None else anthropic.omit,
+                tool_choice=tool_choice if tool_choice is not None else anthropic.omit,
             ) as stream:
                 async for text in stream.text_stream:
                     yield TextDelta(text)

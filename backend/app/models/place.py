@@ -8,6 +8,7 @@ the public services' usage policies.
 - `UpstreamCall`: one row per request we make to an external service, used to
   enforce the daily budgets (and handy for spotting trouble).
 - `GeocodeResult`: cached Nominatim answers, keyed by normalised search text.
+- `SavedPlace`: places a user has saved, with an optional note.
 """
 
 import uuid
@@ -15,7 +16,7 @@ from datetime import datetime
 from typing import Any
 
 from geoalchemy2 import Geometry, WKBElement
-from sqlalchemy import BigInteger, DateTime, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Index, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -77,3 +78,21 @@ class GeocodeResult(Base):
     query: Mapped[str] = mapped_column(String(200), primary_key=True)
     results: Mapped[list[dict[str, Any]]] = mapped_column(JSONB)
     fetched_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SavedPlace(TimestampMixin, Base):
+    """A place a user saved (from chat's save_place tool, or later the map).
+
+    Deleted together with the place if OpenStreetMap removes it (the place
+    no longer exists, so there is nothing left to show).
+    """
+
+    __tablename__ = "saved_places"
+    __table_args__ = (UniqueConstraint("user_id", "place_id", name="uq_saved_places_user_place"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    # No separate index on user_id: the unique (user_id, place_id) constraint
+    # starts with it, so it already serves "this user's saved places".
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"))
+    place_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("places.id", ondelete="CASCADE"))
+    note: Mapped[str] = mapped_column(Text, default="", server_default="")

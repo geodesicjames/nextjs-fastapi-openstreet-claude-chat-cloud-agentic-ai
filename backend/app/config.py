@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     chat_max_tokens: int = Field(default=16_000, gt=0)
     # Longest user message accepted, in characters.
     chat_max_message_chars: int = Field(default=2_000, gt=0)
+    # Most tool-using steps (model calls that ask for tools) per user message.
+    # After that, the model must answer with what it has.
+    chat_max_tool_steps: int = Field(default=6, gt=0)
     # Access requests per email address per 24 hours; extras are silently
     # dropped (same response, so the form can't be used to spam the owner).
     access_request_max_per_day: int = 3

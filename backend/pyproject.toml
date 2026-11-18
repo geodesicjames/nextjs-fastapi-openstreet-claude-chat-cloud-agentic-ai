@@ -37,6 +37,11 @@ target-version = "py313"
 # ASYNC: catches blocking calls inside async functions, SIM: simplifications.
 select = ["E", "F", "I", "B", "UP", "ASYNC", "SIM"]
 
+[tool.ruff.lint.per-file-ignores]
+# conftest switches DATABASE_URL to the test database before importing the
+# app (which builds its engine at import time), so its app imports come late.
+"tests/conftest.py" = ["E402"]
+
 [tool.pyright]
 include = ["app", "tests", "alembic"]
 pythonVersion = "3.13"

@@ -1,14 +1,10 @@
 """Chat conversations and streamed replies, with a scripted fake model.
 
-`FakeChatModel` stands in for Claude (like FakeEmailSender for email): each
-test scripts the replies and then inspects exactly what the app sent. No
-network calls, no API cost. The real SDK path is covered by the opt-in live
-test in test_chat_live.py.
+See tests/chat_helpers.py for FakeChatModel. The real SDK path is covered by
+the opt-in live test in test_chat_live.py.
 """
 
-import json
-from collections.abc import AsyncIterator, Callable
-from dataclasses import dataclass, field
+from collections.abc import Callable
 from decimal import Decimal
 from typing import Any
 
@@ -18,88 +14,12 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.deps import get_chat_model
 from app.models import ChatMessage, LlmUsage, User
 from app.services import chat as chat_service
-from app.services.llm import ModelReply, ModelUnavailableError, StreamItem, TextDelta
+from app.services.llm import ModelUnavailableError
 from app.services.pricing import TokenUsage
+from tests.chat_helpers import THINKING, FakeChatModel, new_conversation, reply, send
 from tests.factories import grant, make_user, sign_in_as, signed_in_user
-
-# What a Haiku 5.5 reply looks like: an (empty-text) thinking block with a
-# signature, then the answer.
-THINKING = {"type": "thinking", "thinking": "", "signature": "sig-abc"}
-
-
-def reply(
-    text: str = "Hello!",
-    *,
-    chunks: list[str] | None = None,
-    stop_reason: str = "end_turn",
-    content: list[dict[str, Any]] | None = None,
-    usage: TokenUsage | None = None,
-) -> list[StreamItem]:
-    """A scripted reply: its text deltas, then the final ModelReply."""
-    deltas = [TextDelta(c) for c in (chunks if chunks is not None else [text])]
-    final = ModelReply(
-        content=content if content is not None else [THINKING, {"type": "text", "text": text}],
-        stop_reason=stop_reason,
-        usage=usage or TokenUsage(input_tokens=1_000, output_tokens=200),
-        model="claude-haiku-5-5",
-    )
-    return [*deltas, final]
-
-
-@dataclass
-class FakeChatModel:
-    replies: list[list[StreamItem] | Exception] = field(default_factory=list)
-    calls: list[dict[str, Any]] = field(default_factory=list)
-
-    async def stream(self, **kwargs: Any) -> AsyncIterator[StreamItem]:
-        # Deep copy via JSON: later turns must not mutate what we recorded.
-        self.calls.append(json.loads(json.dumps(kwargs, default=str)))
-        script = self.replies.pop(0)
-        if isinstance(script, Exception):
-            raise script
-        for item in script:
-            yield item
-
-
-@pytest.fixture
-def fake_model(app: FastAPI) -> FakeChatModel:
-    model = FakeChatModel()
-    app.dependency_overrides[get_chat_model] = lambda: model
-    return model
-
-
-@pytest.fixture
-async def chatter(db: AsyncSession, client: AsyncClient) -> User:
-    """A signed-in user with an active chat grant."""
-    user = await signed_in_user(db, client)
-    await grant(db, user)
-    return user
-
-
-async def new_conversation(client: AsyncClient) -> str:
-    response = await client.post("/chat/conversations")
-    assert response.status_code == 201, response.text
-    return response.json()["id"]
-
-
-async def send(
-    client: AsyncClient, conversation_id: str, text: str
-) -> list[tuple[str, dict[str, Any]]]:
-    """Send a message and parse the SSE response into (event, data) pairs."""
-    response = await client.post(
-        f"/chat/conversations/{conversation_id}/messages", json={"text": text}
-    )
-    assert response.status_code == 200, response.text
-    assert response.headers["content-type"].startswith("text/event-stream")
-    events = []
-    for frame in response.text.strip().split("\n\n"):
-        lines = dict(line.split(": ", 1) for line in frame.split("\n"))
-        events.append((lines["event"], json.loads(lines["data"])))
-    return events
-
 
 # --- Access -------------------------------------------------------------------------
 
@@ -275,6 +195,8 @@ async def test_api_failure_saves_nothing(
 
     events = await send(client, conversation_id, "hi")
 
+    # Every turn ends with `done`, even after an error, so the client always
+    # knows the stream is over (and what the turn cost).
     assert events == [
         (
             "error",
@@ -282,7 +204,8 @@ async def test_api_failure_saves_nothing(
                 "code": "unavailable",
                 "message": "The assistant is unavailable right now. Please try again.",
             },
-        )
+        ),
+        ("done", {"message_id": None, "stop_reason": None, "truncated": False, "cost_usd": 0.0}),
     ]
     assert await db.scalar(select(func.count()).select_from(ChatMessage)) == 0
     assert await db.scalar(select(func.count()).select_from(LlmUsage)) == 0

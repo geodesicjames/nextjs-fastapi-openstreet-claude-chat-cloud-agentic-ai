@@ -175,12 +175,25 @@ normally and the chat endpoints answer 503.
 | `CHAT_DAILY_BUDGET_USD` | `1.00` | Default daily spend per user. Per-user amounts are set on `/admin`. |
 | `CHAT_MAX_TOKENS` | `16000` | Output cap for every call (thinking counts towards it). |
 | `CHAT_MAX_MESSAGE_CHARS` | `2000` | Longest message a user can send. |
+| `CHAT_MAX_TOOL_STEPS` | `6` | Most tool steps per message. After that, one last call with tools disabled makes the model answer with what it has. |
 
 Compose passes the whole `.env` to the backend, so changing one of these
 means editing `.env` and running `docker compose up -d backend`.
 
 `POST /chat/conversations/{id}/messages` streams the reply as server-sent
-events (`text`, then `done`, or `error`). Tests use a scripted fake model. One
+events: `text`, `tool_start` / `tool_result` (what it's looking up, with
+places to show on the map), `error`, and always a final `done`.
+
+**Tools.** Claude answers from the app's own data with four tools, backed by
+the same services as the map. That means the Overpass and Nominatim budgets
+and caches apply to chat too:
+
+| Tool | What it does |
+| --- | --- |
+| `find_location` | Geocodes a place name (Nominatim, cached) |
+| `search_places` | Places of given categories within a radius, nearest first (PostGIS cache, Overpass on a miss) |
+| `get_place_details` | Opening hours, address, website and other OSM tags for one place |
+| `save_place` | Saves a place to the user's list (`GET` / `DELETE /saved-places`) | Tests use a scripted fake model. One
 opt-in test calls the real API for a fraction of a cent:
 `RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.
 
@@ -278,6 +291,9 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Budgets in dollars, summed from a usage ledger** | Every Claude call writes a row to `llm_usage` with its tokens, including cache reads and writes, and an estimated cost from a per-model price table. Dollars rather than tokens, because cached, uncached and output tokens differ in price by up to 50x, so a token count says little about what a user actually costs. The daily budget is the sum of today's `cost_usd`, checked before each call, so the most a call can go over is its `max_tokens`. |
 | **Claude behind a small `ChatModel` interface** | The chat service never imports the SDK. `AnthropicChatModel` streams through `AsyncAnthropic`, and tests use a scripted fake, so the whole flow is tested without network calls or API cost. |
 | **Chat history stored exactly as sent** | Each message's API content blocks are stored as JSONB and replayed unchanged, including thinking blocks, whose text is empty but whose signature must be kept. History is append-only: editing earlier turns would invalidate replayed thinking and the prompt cache. A failed call saves nothing, so history never has a question without its answer. |
+| **A hand-written tool loop** | Calling the model, running the tools it asks for, and calling it again is a short loop in `app/services/chat.py`, not the SDK's tool runner. Owning it is what allows a budget check before every call, a cap on tool steps, SSE events for each tool, and saving the turn only when it can be replayed. |
+| **Strict tool schemas instead of eager input streaming** | Tool inputs here are tiny (coordinates, a place name), so streaming them early gains nothing. `strict: true` makes the API guarantee inputs match the schema. Bounds that strict schemas can't express (radius 50–2000 m, note length) are enforced by Pydantic, and an out-of-range value goes back to Claude as an error it can correct. |
+| **Only replayable turns are saved** | A turn that ends on an unanswered or cut-off tool call (refusal, `max_tokens`, budget running out, API failure) would be rejected when replayed, so its messages are dropped. Every call's cost is still logged. |
 | **One reply at a time per conversation** | Sending locks the conversation row with `FOR UPDATE NOWAIT`. A double-submitted message gets "busy" rather than a second, interleaved reply. |
 | **`PATCH` sends only the fields that change** | The handler uses `model_dump(exclude_unset=True)`, so `{"daily_token_limit": null}` (go back to the default) differs from leaving the field out (keep it as it is). |
 | **Approval email includes a `/login` fallback** | Sign-in links expire after 30 minutes, but an approval email may not be read for days. |

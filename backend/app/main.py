@@ -15,7 +15,7 @@ import httpx
 from fastapi import FastAPI
 
 from app.ratelimit import RateLimiter
-from app.routers import access_requests, admin, auth, chat, geocode, health, places
+from app.routers import access_requests, admin, auth, chat, geocode, health, places, saved_places
 from app.services.geocoding import NominatimClient
 from app.services.overpass import OverpassClient
 
@@ -60,6 +60,7 @@ def create_app() -> FastAPI:
     app.include_router(admin.router)
     app.include_router(places.router)
     app.include_router(geocode.router)
+    app.include_router(saved_places.router)
 
     return app
 
