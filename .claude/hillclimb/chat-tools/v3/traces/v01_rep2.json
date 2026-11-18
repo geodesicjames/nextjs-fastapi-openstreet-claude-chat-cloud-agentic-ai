@@ -1,0 +1,41 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. For \"how many\", use the total_found number search_places returns, or say \"several\"; don't count a list by hand. When you list only some of the results, say so.\n- Read tags literally and don't extend their meaning: a tag saying a facility exists for one group doesn't mean others are excluded, and a missing tag means the data doesn't say, not \"no\". If you're unsure what a tag means, quote it as written.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Find me a café near Calton Hill and save it to my list."
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Calton Hill, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Calton Hill\", \"display_name\": \"Calton Hill, Broughton, New Town/Broughton, City of Edinburgh, Scotland, EH7 5AA, United Kingdom\", \"lat\": 55.9552543, \"lon\": -3.1827977, \"kind\": \"leisure:park\"}, {\"name\": \"Calton Hill\", \"display_name\": \"Calton Hill, City of Edinburgh, Scotland, EH7 5AA, United Kingdom\", \"lat\": 55.9555565, \"lon\": -3.1822564, \"kind\": \"natural:peak\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9552543,\n  \"lon\": -3.1827977,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"cafe\"\n  ],\n  \"name\": null\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"80c73e2a-c186-4947-92c8-f89debba3d2d\", \"name\": \"Collective Kiosk\", \"category\": \"cafe\", \"distance_m\": 31, \"lat\": 55.955023, \"lon\": -3.18307}, {\"place_id\": \"934a7119-7a8f-4d3c-b407-d759c1649814\", \"name\": \"Cafe Calton\", \"category\": \"cafe\", \"distance_m\": 63, \"lat\": 55.955202, \"lon\": -3.183813}, {\"place_id\": \"2cf7cf2b-fc5f-45d5-8ec2-ce7152595667\", \"name\": \"Cafè Barbera\", \"category\": \"cafe\", \"distance_m\": 224, \"lat\": 55.956202, \"lon\": -3.185966}, {\"place_id\": \"a5ba2296-481a-4177-84a5-3e082271b55e\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 265, \"lat\": 55.954537, \"lon\": -3.186859}, {\"place_id\": \"8b6ca0f2-972d-406c-be22-1dd4cb49cd39\", \"name\": \"Artisan Roast\", \"category\": \"cafe\", \"distance_m\": 295, \"lat\": 55.955757, \"lon\": -3.18745}, {\"place_id\": \"eec3dfd1-6f25-4775-8350-1893497998d9\", \"name\": \"The CAFE by Benugo\", \"category\": \"cafe\", \"distance_m\": 297, \"lat\": 55.955391, \"lon\": -3.187568}, {\"place_id\": \"8aa7aca2-5ea9-488a-b335-84a562687a02\", \"name\": \"Platform 41 Coffee\", \"category\": \"cafe\", \"distance_m\": 309, \"lat\": 55.954217, \"lon\": -3.187394}, {\"place_id\": \"84bf2f7c-151a-4b9f-b8e7-eb94a7cbad9d\", \"name\": \"Coffee Saints\", \"category\": \"cafe\", \"distance_m\": 319, \"lat\": 55.955813, \"lon\": -3.18783}, {\"place_id\": \"24c6f0fc-ee61-49d7-b265-2406503c203f\", \"name\": \"Kuna Café and Bakery\", \"category\": \"cafe\", \"distance_m\": 321, \"lat\": 55.958074, \"lon\": -3.183898}, {\"place_id\": \"ab131921-8b9e-4a2a-96e5-f5e917dae230\", \"name\": \"Elm Row Cafe Bistro\", \"category\": \"cafe\", \"distance_m\": 328, \"lat\": 55.958152, \"lon\": -3.183822}, {\"place_id\": \"6aaf0cdc-594e-41aa-ac70-70b6a7de78cd\", \"name\": \"Black Sheep Coffee\", \"category\": \"cafe\", \"distance_m\": 334, \"lat\": 55.955441, \"lon\": -3.188155}, {\"place_id\": \"ef667122-acde-49a5-affc-1ead37dab7b5\", \"name\": \"Cupp\", \"category\": \"cafe\", \"distance_m\": 337, \"lat\": 55.954287, \"lon\": -3.187927}, {\"place_id\": \"4a7d6081-f804-4042-8f4f-deea879b12e0\", \"name\": \"Bubbleology\", \"category\": \"cafe\", \"distance_m\": 343, \"lat\": 55.954721, \"lon\": -3.188228}, {\"place_id\": \"472ba9fa-9190-462f-b95e-1c07d18e4e80\", \"name\": \"Pep & Fodder\", \"category\": \"cafe\", \"distance_m\": 359, \"lat\": 55.953693, \"lon\": -3.187849}, {\"place_id\": \"6491609d-3007-46e1-afd4-15b5e0da69cb\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 382, \"lat\": 55.954211, \"lon\": -3.188648}, {\"place_id\": \"e513e4ab-281b-4516-b710-1ede946e00ca\", \"name\": \"kul\", \"category\": \"cafe\", \"distance_m\": 383, \"lat\": 55.958689, \"lon\": -3.183308}, {\"place_id\": \"d4c4aacb-433a-433c-9002-b81cc5012002\", \"name\": \"Stòr Coffee\", \"category\": \"cafe\", \"distance_m\": 388, \"lat\": 55.95714, \"lon\": -3.188049}, {\"place_id\": \"7e58bd9f-f28d-4d57-8b1e-43840cea5822\", \"name\": \"Benugo\", \"category\": \"cafe\", \"distance_m\": 411, \"lat\": 55.953176, \"lon\": -3.188257}, {\"place_id\": \"5c41add8-be7b-45cb-851a-e520c48bd228\", \"name\": \"Triple-Tri Coffee\", \"category\": \"cafe\", \"distance_m\": 418, \"lat\": 55.956217, \"lon\": -3.189291}, {\"place_id\": \"2391a321-712e-40ba-9ed5-8092e27978ca\", \"name\": \"Santu Roastery\", \"category\": \"cafe\", \"distance_m\": 422, \"lat\": 55.95849, \"lon\": -3.186326}], \"total_found\": 38}"
+ },
+ {
+  "role": "tool_call",
+  "name": "save_place",
+  "content": "{\n  \"place_id\": \"80c73e2a-c186-4947-92c8-f89debba3d2d\",\n  \"note\": \"\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"saved\": true, \"name\": \"Collective Kiosk\"}"
+ },
+ {
+  "role": "assistant",
+  "content": "I found 38 cafés within 500 m of Calton Hill and saved the closest one, **Collective Kiosk**, about 31 m away, to your list.\n\nOther nearby options include:\n- Cafe Calton, 63 m\n- Cafè Barbera, 224 m\n- Starbucks, 265 m\n- Artisan Roast, 295 m"
+ }
+]

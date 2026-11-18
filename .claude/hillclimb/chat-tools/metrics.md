@@ -56,6 +56,21 @@ A likely improvement, but not conclusive. 8 cases improved and 3 got worse. Two 
 are worth noting: s04 now gives an exact count and gets it wrong, and s02 misreads `female=yes` as
 "female-only". Answer length is unchanged (median 80 words); the run cost $1.05.
 
+## v3: counts and tag reading (2026-11-18)
+
+26 cases × 4 reps, against v2.
+
+| metric | v2 | v3 | paired difference (95% CI) |
+| --- | --- | --- | --- |
+| grounded | 91/104 = 88% | 90/104 = 87% | −1.0 points (−11.5 to +10.6) |
+| tool_use | 104/104 | 104/104 | 0 |
+
+The targeted failures were fixed (s02 4/4, s04 3/4), but the overall score didn't move: other cases
+dropped. s07 now calls a list "the nearest eight" while skipping closer cafés. **At about ±11 points
+of resolution, prompt changes of this size can no longer be told apart from noise.** More progress
+needs more cases or reps, or a grader change (the judge isn't told that the map shows the places
+returned by search).
+
 ## Known limitations
 
 - **Judge noise isn't measured yet.** The final grade came from two re-grades that changed the

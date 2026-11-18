@@ -1,0 +1,41 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- Describe places only with what the tools returned: name, category, distance, and the tags from get_place_details. People act on what you say (walking somewhere, relying on accessibility), so don't add details the data doesn't contain: no guesses from a place's name (\"Riverside Café is by the river\"), no impressions (\"cosy\", \"popular\", \"spacious\"), and no positions relative to landmarks the results don't mention. Distances, and directions worked out from coordinates, are fine. For \"how many\", use the total_found number search_places returns, or say \"several\"; don't count a list by hand. When you list only some of the results, say so.\n- Read tags literally and don't extend their meaning: a tag saying a facility exists for one group doesn't mean others are excluded, and a missing tag means the data doesn't say, not \"no\". If you're unsure what a tag means, quote it as written.\n- For questions about a specific place (opening hours, website, accessibility), find it with search_places using its name, then call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "What are Oh Deer's opening hours? It's the café on Leith Walk."
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Oh Deer, Leith Walk, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Gayfield, Broughton, New Town/Broughton, City of Edinburgh, Scotland, EH7 4AF, United Kingdom\", \"lat\": 55.9600285, \"lon\": -3.1825582, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Lorne, Pilrig, Leith, City of Edinburgh, Scotland, EH7 5HN, United Kingdom\", \"lat\": 55.9623057, \"lon\": -3.1793352, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Gayfield, Broughton, Leith, City of Edinburgh, Scotland, EH7 4AE, United Kingdom\", \"lat\": 55.958944, \"lon\": -3.1836545, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Lorne, Hillside, Leith, City of Edinburgh, Scotland, EH7 5HW, United Kingdom\", \"lat\": 55.9615161, \"lon\": -3.1803503, \"kind\": \"highway:primary\"}, {\"name\": \"Leith Walk\", \"display_name\": \"Leith Walk, Lorne, Pilrig, Leith, City of Edinburgh, Scotland, EH7 4NY, United Kingdom\", \"lat\": 55.9632462, \"lon\": -3.1782196, \"kind\": \"highway:primary\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9600285,\n  \"lon\": -3.1825582,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"cafe\"\n  ],\n  \"name\": \"oh deer\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"39e2361f-73f3-443d-bfd5-ff69171d1f19\", \"name\": \"Oh Deer\", \"category\": \"cafe\", \"distance_m\": 113, \"lat\": 55.960689, \"lon\": -3.181176}], \"total_found\": 1}"
+ },
+ {
+  "role": "tool_call",
+  "name": "get_place_details",
+  "content": "{\n  \"place_id\": \"39e2361f-73f3-443d-bfd5-ff69171d1f19\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"place_id\": \"39e2361f-73f3-443d-bfd5-ff69171d1f19\", \"name\": \"Oh Deer\", \"category\": \"cafe\", \"lat\": 55.960689, \"lon\": -3.181176, \"tags\": {\"addr:city\": \"Edinburgh\", \"addr:housenumber\": \"73\", \"addr:postcode\": \"EH7 4AQ\", \"addr:street\": \"Elm Row\", \"amenity\": \"cafe\", \"check_date\": \"2025-12-07\", \"fhrs:id\": \"1723805\", \"name\": \"Oh Deer\", \"opening_hours\": \"Mo-Fr 07:30-18:30; Sa 08:30-18:30; Su 08:30-17:00\", \"source\": \"survey\", \"website\": \"https://www.ohdeer.uk/\"}, \"osm_url\": \"https://www.openstreetmap.org/node/2921809063\"}"
+ },
+ {
+  "role": "assistant",
+  "content": "Oh Deer's listed opening hours are:\n\n- **Monday to Friday:** 07:30 to 18:30\n- **Saturday:** 08:30 to 18:30\n- **Sunday:** 08:30 to 17:00\n\nThe map lists it at 73 Elm Row, EH7 4AQ, about 113 m from the centre of Leith Walk. The listing was last checked on 7 December 2025, so the hours may have changed since then. The website is https://www.ohdeer.uk/ if you want to confirm."
+ }
+]
