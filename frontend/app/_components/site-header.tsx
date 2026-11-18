@@ -8,7 +8,7 @@ import { Suspense } from "react";
 
 import { type ChatAccess, getChatAccess, getCurrentUser } from "@/lib/api";
 import { logout } from "@/lib/auth-actions";
-import { formatTokens } from "@/lib/format";
+import { formatUsd } from "@/lib/format";
 
 export function SiteHeader() {
   return (
@@ -62,7 +62,7 @@ async function UserMenu() {
   );
 }
 
-/** Chat availability: tokens left today, or why chat is unavailable. */
+/** Chat availability: budget left today, or why chat is unavailable. */
 function ChatBadge({ chat }: { chat: ChatAccess }) {
   if (chat.reason === "no_grant") {
     return (
@@ -75,16 +75,14 @@ function ChatBadge({ chat }: { chat: ChatAccess }) {
   const exhausted = chat.reason === "budget_exhausted";
   return (
     <span
-      title={`${chat.tokens_used_today.toLocaleString("en")} of ${chat.daily_token_limit.toLocaleString("en")} tokens used today. Resets at midnight UTC.`}
+      title={`Spent ${formatUsd(chat.spent_today_usd)} of ${formatUsd(chat.daily_budget_usd)} today. Resets at midnight UTC.`}
       className={`rounded-full border px-2 py-0.5 ${
         exhausted
           ? "border-amber-400 text-amber-700 dark:text-amber-400"
           : "border-neutral-300 text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
       }`}
     >
-      {exhausted
-        ? "Chat limit reached today"
-        : `Chat: ${formatTokens(chat.tokens_remaining)} tokens left`}
+      {exhausted ? "Chat limit reached today" : `Chat: ${formatUsd(chat.remaining_usd)} left today`}
     </span>
   );
 }

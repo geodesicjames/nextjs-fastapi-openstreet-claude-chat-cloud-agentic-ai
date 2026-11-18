@@ -15,6 +15,7 @@ from collections.abc import AsyncIterator
 from datetime import UTC, datetime
 from typing import Annotated
 
+import anthropic
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -23,6 +24,7 @@ from app.db import SessionLocal
 from app.models import User
 from app.services.auth import get_session_user
 from app.services.chat_access import ChatStatus, Denial, get_chat_status
+from app.services.llm import AnthropicChatModel, ChatModel
 
 
 async def get_db() -> AsyncIterator[AsyncSession]:
@@ -108,3 +110,28 @@ async def require_chat_access(
 
 
 ChatAccess = Annotated[ChatStatus, Depends(require_chat_access)]
+
+
+# A DB session that stays open until the response has been sent, not just
+# until the endpoint function returns. Needed by streaming responses, whose
+# body is produced after the function has returned.
+StreamingDbSession = Annotated[AsyncSession, Depends(get_db, scope="request")]
+
+
+def get_chat_model(
+    request: Request, settings: Annotated[Settings, Depends(get_settings)]
+) -> ChatModel:
+    """The Claude client, created once per app on first use.
+
+    503 if ANTHROPIC_API_KEY isn't configured. Tests override this
+    dependency with a scripted fake.
+    """
+    if request.app.state.anthropic is None:
+        if settings.anthropic_api_key is None:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE, "Chat isn't configured on this server."
+            )
+        request.app.state.anthropic = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key.get_secret_value()
+        )
+    return AnthropicChatModel(request.app.state.anthropic)

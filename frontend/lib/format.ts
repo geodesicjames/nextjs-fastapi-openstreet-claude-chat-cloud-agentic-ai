@@ -1,10 +1,10 @@
 // Display helpers shared by Server and Client Components.
 
-const compact = new Intl.NumberFormat("en", { notation: "compact", maximumFractionDigits: 1 });
+const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" });
 
-/** 12345 -> "12.3K" */
-export function formatTokens(tokens: number): string {
-  return compact.format(tokens);
+/** 0.4567 -> "$0.46"; tiny non-zero amounts -> "<$0.01" rather than "$0.00". */
+export function formatUsd(amount: number): string {
+  return amount > 0 && amount < 0.005 ? "<$0.01" : usd.format(amount);
 }
 
 // Fixed locale and UTC so the server and the browser render the same text

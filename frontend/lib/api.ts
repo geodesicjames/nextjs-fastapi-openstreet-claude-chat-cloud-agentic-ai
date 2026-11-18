@@ -83,9 +83,10 @@ export type ChatAccess = {
   allowed: boolean;
   reason: "no_grant" | "budget_exhausted" | null;
   mode: "invite_only" | "open";
-  daily_token_limit: number;
-  tokens_used_today: number;
-  tokens_remaining: number;
+  // USD
+  daily_budget_usd: number;
+  spent_today_usd: number;
+  remaining_usd: number;
   resets_at: string;
   grant_expires_at: string | null;
 };
@@ -106,10 +107,10 @@ export type Grant = {
   user_id: string;
   user_email: string;
   note: string;
-  /** The grant's own limit; null means it follows the default. */
-  daily_token_limit: number | null;
-  effective_daily_token_limit: number;
-  tokens_used_today: number;
+  /** The grant's own daily budget (USD); null means it follows the default. */
+  daily_budget_usd: number | null;
+  effective_daily_budget_usd: number;
+  spent_today_usd: number;
   expires_at: string | null;
   revoked_at: string | null;
   created_at: string;

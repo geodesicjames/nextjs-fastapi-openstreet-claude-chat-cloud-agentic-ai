@@ -6,25 +6,26 @@ const inputClass =
 export function GrantFields({
   idPrefix,
   note = "",
-  dailyTokenLimit = null,
+  dailyBudgetUsd = null,
   expiresOn = "",
 }: {
   idPrefix: string;
   note?: string;
-  dailyTokenLimit?: number | null;
+  dailyBudgetUsd?: number | null;
   expiresOn?: string;
 }) {
   return (
     <div className="grid gap-3 sm:grid-cols-3">
       <label className="flex flex-col gap-1 text-sm">
-        Daily token limit
+        Daily budget (USD)
         <input
-          id={`${idPrefix}-limit`}
-          name="daily_token_limit"
+          id={`${idPrefix}-budget`}
+          name="daily_budget_usd"
           type="number"
-          min={1}
-          step={1}
-          defaultValue={dailyTokenLimit ?? ""}
+          min={0.01}
+          max={100}
+          step={0.01}
+          defaultValue={dailyBudgetUsd ?? ""}
           placeholder="Default"
           className={inputClass}
         />
