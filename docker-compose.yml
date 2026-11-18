@@ -27,6 +27,12 @@ services:
 
   backend:
     build: ./backend
+    # All settings in the repo-root .env (chat model, budgets, the Anthropic
+    # key, OSM contact...) reach the backend. Values under `environment:`
+    # below take precedence, e.g. DATABASE_URL pointing at the db service.
+    env_file:
+      - path: .env
+        required: false
     environment:
       ENVIRONMENT: development
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-app}:${POSTGRES_PASSWORD:-app}@db:5432/${POSTGRES_DB:-app}

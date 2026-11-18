@@ -82,17 +82,17 @@ export async function revokeGrant(
   return adminCall(`/admin/grants/${encodeURIComponent(id)}/revoke`, "POST");
 }
 
-/** Read the shared grant inputs: note, daily_token_limit, expires_on. */
+/** Read the shared grant inputs: note, daily_budget_usd, expires_on. */
 function grantFields(formData: FormData) {
-  const limit = String(formData.get("daily_token_limit") ?? "").trim();
+  const budget = String(formData.get("daily_budget_usd") ?? "").trim();
   const expiresOn = String(formData.get("expires_on") ?? "").trim();
   return {
     note: String(formData.get("note") ?? "").trim(),
-    // Not Number(limit) alone: Number("abc") is NaN, which JSON.stringify
+    // Not Number(budget) alone: Number("abc") is NaN, which JSON.stringify
     // turns into null and would silently mean "use the default". Sending the
     // raw text instead lets FastAPI reject it with a 422.
-    daily_token_limit:
-      limit === "" ? null : Number.isInteger(Number(limit)) ? Number(limit) : limit,
+    daily_budget_usd:
+      budget === "" ? null : Number.isFinite(Number(budget)) ? Number(budget) : budget,
     // A date input gives YYYY-MM-DD. Access lasts to the end of that day, UTC
     // (the same clock the daily budget uses).
     expires_at: expiresOn === "" ? null : `${expiresOn}T23:59:59Z`,
@@ -121,7 +121,7 @@ async function errorMessage(res: Response): Promise<string> {
     const { detail } = (await res.json()) as { detail: unknown };
     // 409s carry a sentence; 422s carry a list of field errors.
     if (typeof detail === "string") return detail;
-    if (res.status === 422) return "Check the values: limits must be positive whole numbers.";
+    if (res.status === 422) return "Check the values: budgets must be between $0.01 and $100.";
   } catch {
     // Not JSON; fall through.
   }

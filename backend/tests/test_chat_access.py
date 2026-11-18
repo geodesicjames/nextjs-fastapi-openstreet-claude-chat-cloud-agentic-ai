@@ -1,4 +1,4 @@
-"""Invite-only chat access: grants, daily token budgets and chat_mode.
+"""Invite-only chat access: grants, daily USD budgets and chat_mode.
 
 `require_chat_access` guards routes that don't exist yet, so these tests add a
 small route that uses it (`/test/guarded`) to exercise it over HTTP, the same
@@ -19,26 +19,31 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.deps import ChatAccess
 from app.models import ChatGrant, LlmUsage, User
 from app.services.chat_access import make_admin, record_usage, start_of_day
+from app.services.pricing import TokenUsage
 from tests.factories import grant, signed_in_user
 
 GUARDED = "/test/guarded"
-DEFAULT_LIMIT = 50_000
+DEFAULT_BUDGET = Decimal("1.00")
 
 
 @pytest.fixture(autouse=True)
 def guarded_route(app: FastAPI) -> None:
     @app.get(GUARDED)
-    async def guarded(access: ChatAccess) -> dict[str, int]:
-        return {"remaining": access.remaining}
+    async def guarded(access: ChatAccess) -> dict[str, str]:
+        return {"remaining": str(access.remaining_usd)}
 
 
-async def use_tokens(db: AsyncSession, user: User, tokens: int, at: datetime | None = None) -> None:
+async def remaining(client: AsyncClient) -> Decimal:
+    """Budget left according to the guarded route (Decimal: no float rounding)."""
+    response = await client.get(GUARDED)
+    assert response.status_code == 200, response.text
+    return Decimal(response.json()["remaining"])
+
+
+async def spend(db: AsyncSession, user: User, usd: Decimal, at: datetime | None = None) -> None:
+    """Log a call that cost `usd`."""
     usage = LlmUsage(
-        user_id=user.id,
-        model="test-model",
-        input_tokens=tokens // 2,
-        output_tokens=tokens - tokens // 2,
-        cost_usd=Decimal("0.01"),
+        user_id=user.id, model="claude-haiku-5-5", input_tokens=1, output_tokens=1, cost_usd=usd
     )
     if at is not None:
         usage.created_at = at
@@ -70,15 +75,13 @@ async def test_active_grant_allows_chat(client: AsyncClient, db: AsyncSession) -
     user = await signed_in_user(db, client)
     await grant(db, user)
 
-    response = await client.get(GUARDED)
-    assert response.status_code == 200
-    assert response.json() == {"remaining": DEFAULT_LIMIT}
+    assert await remaining(client) == DEFAULT_BUDGET
 
     access = (await client.get("/chat/access")).json()
     assert access["allowed"] is True
     assert access["reason"] is None
-    assert access["daily_token_limit"] == DEFAULT_LIMIT
-    assert access["tokens_used_today"] == 0
+    assert access["daily_budget_usd"] == 1.0
+    assert access["spent_today_usd"] == 0
 
 
 async def test_expired_grant_is_403(client: AsyncClient, db: AsyncSession) -> None:
@@ -121,10 +124,10 @@ async def test_another_users_grant_does_not_count(client: AsyncClient, db: Async
 async def test_usage_today_counts_against_budget(client: AsyncClient, db: AsyncSession) -> None:
     user = await signed_in_user(db, client)
     await grant(db, user)
-    await use_tokens(db, user, 1_234)
+    await spend(db, user, Decimal("0.1234"))
 
-    assert (await client.get(GUARDED)).json() == {"remaining": DEFAULT_LIMIT - 1_234}
-    assert (await client.get("/chat/access")).json()["tokens_used_today"] == 1_234
+    assert await remaining(client) == DEFAULT_BUDGET - Decimal("0.1234")
+    assert (await client.get("/chat/access")).json()["spent_today_usd"] == 0.1234
 
 
 async def test_budget_used_up_is_429_with_retry_after(
@@ -132,7 +135,7 @@ async def test_budget_used_up_is_429_with_retry_after(
 ) -> None:
     user = await signed_in_user(db, client)
     await grant(db, user)
-    await use_tokens(db, user, DEFAULT_LIMIT)
+    await spend(db, user, DEFAULT_BUDGET)
 
     response = await client.get(GUARDED)
     assert response.status_code == 429
@@ -142,7 +145,7 @@ async def test_budget_used_up_is_429_with_retry_after(
     access = (await client.get("/chat/access")).json()
     assert access["allowed"] is False
     assert access["reason"] == "budget_exhausted"
-    assert access["tokens_remaining"] == 0
+    assert access["remaining_usd"] == 0
 
 
 async def test_usage_before_midnight_utc_does_not_count(
@@ -151,7 +154,7 @@ async def test_usage_before_midnight_utc_does_not_count(
     user = await signed_in_user(db, client)
     await grant(db, user)
     yesterday = start_of_day(datetime.now(UTC)) - timedelta(seconds=1)
-    await use_tokens(db, user, DEFAULT_LIMIT, at=yesterday)
+    await spend(db, user, DEFAULT_BUDGET, at=yesterday)
 
     assert (await client.get(GUARDED)).status_code == 200
 
@@ -160,47 +163,48 @@ async def test_another_users_usage_does_not_count(client: AsyncClient, db: Async
     other = User(email="other@example.com")
     db.add(other)
     await db.flush()
-    await use_tokens(db, other, DEFAULT_LIMIT)
+    await spend(db, other, DEFAULT_BUDGET)
     user = await signed_in_user(db, client)
     await grant(db, user)
 
-    assert (await client.get(GUARDED)).json() == {"remaining": DEFAULT_LIMIT}
+    assert await remaining(client) == DEFAULT_BUDGET
 
 
-async def test_grant_limit_overrides_default(client: AsyncClient, db: AsyncSession) -> None:
+async def test_grant_budget_overrides_default(client: AsyncClient, db: AsyncSession) -> None:
     user = await signed_in_user(db, client)
-    await grant(db, user, daily_token_limit=1_000)
-    await use_tokens(db, user, 1_000)
+    await grant(db, user, daily_budget_usd=Decimal("0.25"))
+    await spend(db, user, Decimal("0.25"))
 
     assert (await client.get(GUARDED)).status_code == 429
-    assert (await client.get("/chat/access")).json()["daily_token_limit"] == 1_000
+    assert (await client.get("/chat/access")).json()["daily_budget_usd"] == 0.25
 
 
-async def test_default_limit_setting_applies_to_grants_without_their_own(
+async def test_default_budget_setting_applies_to_grants_without_their_own(
     client: AsyncClient, db: AsyncSession, use_settings: Callable[..., None]
 ) -> None:
-    use_settings(chat_default_daily_tokens=500)
+    use_settings(chat_daily_budget_usd=Decimal("0.50"))
     user = await signed_in_user(db, client)
     await grant(db, user)
 
-    assert (await client.get(GUARDED)).json() == {"remaining": 500}
+    assert await remaining(client) == Decimal("0.50")
 
 
 async def test_record_usage_is_counted(client: AsyncClient, db: AsyncSession) -> None:
     user = await signed_in_user(db, client)
     g = await grant(db, user)
-    usage = await record_usage(
+    row = await record_usage(
         db,
         user=user,
         grant=g,
-        model="claude-test",
-        input_tokens=300,
-        output_tokens=200,
-        cost_usd=Decimal("0.004500"),
+        model="claude-haiku-5-5",
+        usage=TokenUsage(input_tokens=30_000, output_tokens=20_000),
+        stop_reason="end_turn",
     )
 
-    assert usage.grant_id == g.id
-    assert (await client.get(GUARDED)).json() == {"remaining": DEFAULT_LIMIT - 500}
+    # Haiku 5.5: 0.03M input x $0.10 + 0.02M output x $0.50 = $0.013
+    assert row.cost_usd == Decimal("0.013")
+    assert row.grant_id == g.id
+    assert await remaining(client) == DEFAULT_BUDGET - Decimal("0.013")
 
 
 # --- Open mode ---------------------------------------------------------------
@@ -212,7 +216,7 @@ async def test_open_mode_allows_signed_in_users_without_grant(
     use_settings(chat_mode="open")
     await signed_in_user(db, client)
 
-    assert (await client.get(GUARDED)).json() == {"remaining": DEFAULT_LIMIT}
+    assert await remaining(client) == DEFAULT_BUDGET
     assert (await client.get("/chat/access")).json()["mode"] == "open"
 
 
@@ -228,7 +232,7 @@ async def test_open_mode_still_enforces_budget(
 ) -> None:
     use_settings(chat_mode="open")
     user = await signed_in_user(db, client)
-    await use_tokens(db, user, DEFAULT_LIMIT)
+    await spend(db, user, DEFAULT_BUDGET)
 
     assert (await client.get(GUARDED)).status_code == 429
 

@@ -9,6 +9,7 @@ Routers handle HTTP and send the emails; this module holds the rules.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -91,7 +92,7 @@ async def approve_access_request(
     admin: User,
     *,
     note: str,
-    daily_token_limit: int | None,
+    daily_budget_usd: Decimal | None,
     expires_at: datetime | None,
 ) -> ChatGrant:
     """Approve: create the user if needed and give them a grant.
@@ -106,7 +107,7 @@ async def approve_access_request(
         user=user,
         granted_by=admin,
         note=note,
-        daily_token_limit=daily_token_limit,
+        daily_budget_usd=daily_budget_usd,
         expires_at=expires_at,
     )
     await db.commit()
@@ -128,18 +129,18 @@ async def list_grants(db: AsyncSession, *, include_revoked: bool) -> list[ChatGr
     return list(await db.scalars(query))
 
 
-async def tokens_used_today_by_user(
+async def spent_today_by_user(
     db: AsyncSession, user_ids: list[uuid.UUID]
-) -> dict[uuid.UUID, int]:
-    """Today's token totals for many users in one query (for the admin list)."""
+) -> dict[uuid.UUID, Decimal]:
+    """Today's spend (USD) for many users in one query (for the admin list)."""
     if not user_ids:
         return {}
     rows = await db.execute(
-        select(LlmUsage.user_id, func.sum(LlmUsage.input_tokens + LlmUsage.output_tokens))
+        select(LlmUsage.user_id, func.sum(LlmUsage.cost_usd))
         .where(LlmUsage.user_id.in_(user_ids), LlmUsage.created_at >= start_of_day(_now()))
         .group_by(LlmUsage.user_id)
     )
-    return {user_id: int(total) for user_id, total in rows}
+    return {user_id: Decimal(total) for user_id, total in rows}
 
 
 async def get_grant(db: AsyncSession, grant_id: uuid.UUID) -> ChatGrant | None:
@@ -147,10 +148,10 @@ async def get_grant(db: AsyncSession, grant_id: uuid.UUID) -> ChatGrant | None:
 
 
 async def update_grant(db: AsyncSession, grant: ChatGrant, changes: dict[str, object]) -> None:
-    """Apply admin edits (daily_token_limit, expires_at, note).
+    """Apply admin edits (daily_budget_usd, expires_at, note).
 
     `changes` holds only the fields the admin sent, so sending
-    `daily_token_limit: null` (back to the default) differs from leaving it out.
+    `daily_budget_usd: null` (back to the default) differs from leaving it out.
     """
     if grant.revoked_at is not None:
         raise GrantRevokedError

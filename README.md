@@ -111,10 +111,11 @@ rights and a grant (the equivalent of Django's `createsuperuser`):
 docker compose exec backend python -m app.cli make-admin you@example.com
 ```
 
-Each grant has a daily token budget (input + output tokens, resetting at
-midnight UTC). A grant with no limit of its own uses `CHAT_DEFAULT_DAILY_TOKENS`
-(50,000). Setting `CHAT_MODE=open` lets every signed-in user chat with the
-default budget. `GET /chat/access` reports your status and today's usage.
+Each grant has a **daily budget in US dollars**, estimated from the tokens
+each Claude call uses and resetting at midnight UTC. A grant with no budget of
+its own uses `CHAT_DAILY_BUDGET_USD` ($1.00). Setting `CHAT_MODE=open` lets
+every signed-in user chat with the default budget. `GET /chat/access` reports
+your status and today's spend.
 
 How someone gets access:
 
@@ -158,6 +159,30 @@ cached in PostGIS:
   [public instance](https://wiki.openstreetmap.org/wiki/Overpass_API#Public_Overpass_API_instances)
   to change it. The budgets follow the main instance's stricter policy
   whichever you use.
+
+### Claude chat
+
+Chat needs an Anthropic API key in `.env`. Use a key dedicated to this
+project, created in a workspace with a spend limit in the
+[Claude Console](https://platform.claude.com). Without a key the app runs
+normally and the chat endpoints answer 503.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `ANTHROPIC_API_KEY` | (empty) | Backend only. Never in a `NEXT_PUBLIC_*` variable. |
+| `CHAT_MODEL` | `claude-haiku-5-5` | The model the app's chat calls. It must have prices in `backend/app/services/pricing.py`, or the backend won't start. |
+| `CHAT_EFFORT` | `low` | How much the model reasons: `low` to `max`. Higher costs more. |
+| `CHAT_DAILY_BUDGET_USD` | `1.00` | Default daily spend per user. Per-user amounts are set on `/admin`. |
+| `CHAT_MAX_TOKENS` | `16000` | Output cap for every call (thinking counts towards it). |
+| `CHAT_MAX_MESSAGE_CHARS` | `2000` | Longest message a user can send. |
+
+Compose passes the whole `.env` to the backend, so changing one of these
+means editing `.env` and running `docker compose up -d backend`.
+
+`POST /chat/conversations/{id}/messages` streams the reply as server-sent
+events (`text`, then `done`, or `error`). Tests use a scripted fake model. One
+opt-in test calls the real API for a fraction of a cent:
+`RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.
 
 ### The map
 
@@ -250,7 +275,10 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Alembic connects with `search_path=public`** | The `postgis/postgis` image puts its `tiger` and `topology` schemas on the search path, and autogenerate would otherwise try to drop their tables. |
 | **Tests roll back a transaction** | Each test runs in a transaction that is rolled back afterwards, like Django's `TestCase`, so tests are isolated and leave the DB clean. |
 | **Chat gated by a single dependency** | Every chat and agent route depends on `require_chat_access`, which returns 401 (not signed in), 403 (no active grant) or 429 with `Retry-After` (daily budget used up). One place to audit, and opening chat to everyone is just `CHAT_MODE=open`. |
-| **Token budget summed from a usage ledger** | Every Claude call writes a row to `llm_usage` (tokens and estimated cost). The daily budget is the sum of today's rows, and the same table will feed the cost dashboard. Budgets are checked before each call, so the most a call can go over is its `max_tokens`. |
+| **Budgets in dollars, summed from a usage ledger** | Every Claude call writes a row to `llm_usage` with its tokens, including cache reads and writes, and an estimated cost from a per-model price table. Dollars rather than tokens, because cached, uncached and output tokens differ in price by up to 50x, so a token count says little about what a user actually costs. The daily budget is the sum of today's `cost_usd`, checked before each call, so the most a call can go over is its `max_tokens`. |
+| **Claude behind a small `ChatModel` interface** | The chat service never imports the SDK. `AnthropicChatModel` streams through `AsyncAnthropic`, and tests use a scripted fake, so the whole flow is tested without network calls or API cost. |
+| **Chat history stored exactly as sent** | Each message's API content blocks are stored as JSONB and replayed unchanged, including thinking blocks, whose text is empty but whose signature must be kept. History is append-only: editing earlier turns would invalidate replayed thinking and the prompt cache. A failed call saves nothing, so history never has a question without its answer. |
+| **One reply at a time per conversation** | Sending locks the conversation row with `FOR UPDATE NOWAIT`. A double-submitted message gets "busy" rather than a second, interleaved reply. |
 | **`PATCH` sends only the fields that change** | The handler uses `model_dump(exclude_unset=True)`, so `{"daily_token_limit": null}` (go back to the default) differs from leaving the field out (keep it as it is). |
 | **Approval email includes a `/login` fallback** | Sign-in links expire after 30 minutes, but an approval email may not be read for days. |
 | **One active grant per user, enforced by Postgres** | A partial unique index (`WHERE revoked_at IS NULL`) rather than an app-level check, so two simultaneous approvals can't both succeed. Revoked grants are kept as history. |

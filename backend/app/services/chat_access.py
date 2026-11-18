@@ -4,17 +4,19 @@ The rules, in order:
 1. invite_only mode: the user needs an active grant (not revoked, not
    expired). open mode: any signed-in user may chat; a grant, if they have
    one, still sets their limit.
-2. Tokens used today (UTC, input + output, summed from `llm_usage`) must be
-   below the daily limit.
+2. Today's spend (UTC day, the sum of `llm_usage.cost_usd`) must be below
+   the daily budget in USD.
 
 The budget is checked *before* each Claude call, so a call that starts just
-under the limit can finish a little over it. That overshoot is bounded by the
-call's `max_tokens`, which every call must set.
+under the budget can finish a little over it. That overshoot is bounded by
+the call's `max_tokens`, which every call must set (on Haiku 5.5 a full
+16K-token reply costs under a cent).
 
 `app/deps.py` turns a denied status into an HTTP error; `GET /chat/access`
 returns the status as-is so the frontend can explain it.
 """
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, time, timedelta
 from decimal import Decimal
@@ -26,6 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import Settings
 from app.models import ChatGrant, LlmUsage, User
 from app.services.auth import normalize_email
+from app.services.pricing import TokenUsage, cost_usd
 
 
 class Denial(StrEnum):
@@ -37,8 +40,8 @@ class Denial(StrEnum):
 class ChatStatus:
     user: User
     grant: ChatGrant | None
-    daily_limit: int
-    used_today: int
+    daily_budget_usd: Decimal
+    spent_today_usd: Decimal
     resets_at: datetime
     denial: Denial | None
 
@@ -47,8 +50,8 @@ class ChatStatus:
         return self.denial is None
 
     @property
-    def remaining(self) -> int:
-        return max(self.daily_limit - self.used_today, 0)
+    def remaining_usd(self) -> Decimal:
+        return max(self.daily_budget_usd - self.spent_today_usd, Decimal(0))
 
 
 def _now() -> datetime:
@@ -70,13 +73,13 @@ async def get_active_grant(db: AsyncSession, user: User, now: datetime) -> ChatG
     )
 
 
-async def tokens_used_since(db: AsyncSession, user: User, since: datetime) -> int:
+async def spent_since(db: AsyncSession, user: User, since: datetime) -> Decimal:
     total = await db.scalar(
-        select(func.coalesce(func.sum(LlmUsage.input_tokens + LlmUsage.output_tokens), 0)).where(
+        select(func.coalesce(func.sum(LlmUsage.cost_usd), 0)).where(
             LlmUsage.user_id == user.id, LlmUsage.created_at >= since
         )
     )
-    return int(total or 0)
+    return Decimal(total or 0)
 
 
 async def get_chat_status(
@@ -86,23 +89,23 @@ async def get_chat_status(
     day_start = start_of_day(now)
     grant = await get_active_grant(db, user, now)
 
-    limit = settings.chat_default_daily_tokens
-    if grant is not None and grant.daily_token_limit is not None:
-        limit = grant.daily_token_limit
+    budget = settings.chat_daily_budget_usd
+    if grant is not None and grant.daily_budget_usd is not None:
+        budget = grant.daily_budget_usd
 
-    used = await tokens_used_since(db, user, day_start)
+    spent = await spent_since(db, user, day_start)
 
     denial: Denial | None = None
     if grant is None and settings.chat_mode == "invite_only":
         denial = Denial.NO_GRANT
-    elif used >= limit:
+    elif spent >= budget:
         denial = Denial.BUDGET_EXHAUSTED
 
     return ChatStatus(
         user=user,
         grant=grant,
-        daily_limit=limit,
-        used_today=used,
+        daily_budget_usd=budget,
+        spent_today_usd=spent,
         resets_at=day_start + timedelta(days=1),
         denial=denial,
     )
@@ -114,22 +117,29 @@ async def record_usage(
     user: User,
     grant: ChatGrant | None,
     model: str,
-    input_tokens: int,
-    output_tokens: int,
-    cost_usd: Decimal,
+    usage: TokenUsage,
+    stop_reason: str | None = None,
+    conversation_id: uuid.UUID | None = None,
+    commit: bool = True,
 ) -> LlmUsage:
-    """Log one Claude call. The chat endpoints call this after every call."""
-    usage = LlmUsage(
+    """Log one Claude call with its estimated cost (from app/services/pricing)."""
+    row = LlmUsage(
         user_id=user.id,
         grant_id=grant.id if grant else None,
+        conversation_id=conversation_id,
         model=model,
-        input_tokens=input_tokens,
-        output_tokens=output_tokens,
-        cost_usd=cost_usd,
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        cache_creation_input_tokens=usage.cache_creation_input_tokens,
+        cache_read_input_tokens=usage.cache_read_input_tokens,
+        stop_reason=stop_reason,
+        cost_usd=cost_usd(model, usage),
     )
-    db.add(usage)
-    await db.commit()
-    return usage
+    db.add(row)
+    # The chat service saves the turn and its usage in one commit.
+    if commit:
+        await db.commit()
+    return row
 
 
 class GrantConflictError(Exception):
@@ -157,7 +167,7 @@ async def create_grant(
     user: User,
     granted_by: User | None,
     note: str = "",
-    daily_token_limit: int | None = None,
+    daily_budget_usd: Decimal | None = None,
     expires_at: datetime | None = None,
 ) -> ChatGrant:
     """Add a grant for `user`. The caller commits.
@@ -182,7 +192,7 @@ async def create_grant(
         user=user,
         granted_by_id=granted_by.id if granted_by else None,
         note=note,
-        daily_token_limit=daily_token_limit,
+        daily_budget_usd=daily_budget_usd,
         expires_at=expires_at,
     )
     db.add(grant)

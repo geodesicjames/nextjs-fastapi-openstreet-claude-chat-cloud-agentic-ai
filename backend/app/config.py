@@ -7,11 +7,12 @@ pydantic-settings plays the role of Django's settings.py, with two differences:
   editing a Python module per environment.
 """
 
+from decimal import Decimal
 from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network
 from typing import Literal
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -45,9 +46,23 @@ class Settings(BaseSettings):
     # invite_only: chat needs an active ChatGrant. open: any signed-in user can
     # chat, so opening up later is a config change rather than a code change.
     chat_mode: Literal["invite_only", "open"] = "invite_only"
-    # Tokens (input + output) per user per UTC day, for grants without their
-    # own limit and for everyone in open mode.
-    chat_default_daily_tokens: int = Field(default=50_000, gt=0)
+    # Spend per user per UTC day (estimated from token usage), for grants
+    # without their own budget and for everyone in open mode.
+    chat_daily_budget_usd: Decimal = Field(default=Decimal("1.00"), gt=0)
+
+    # --- Claude chat ----------------------------------------------------------
+    # Backend only: never exposed to the browser. Use a key dedicated to this
+    # project, with a spend limit set in the Claude Console.
+    anthropic_api_key: SecretStr | None = None
+    # The model the app's chat calls (not related to tools used to build it).
+    # Must have prices in app/services/pricing.py; checked at startup.
+    chat_model: str = "claude-haiku-5-5"
+    # How much the model reasons before answering; "low" suits chat.
+    chat_effort: Literal["low", "medium", "high", "xhigh", "max"] = "low"
+    # Per-call output cap (thinking counts towards it). Every call sets it.
+    chat_max_tokens: int = Field(default=16_000, gt=0)
+    # Longest user message accepted, in characters.
+    chat_max_message_chars: int = Field(default=2_000, gt=0)
     # Access requests per email address per 24 hours; extras are silently
     # dropped (same response, so the form can't be used to spam the owner).
     access_request_max_per_day: int = 3
@@ -94,6 +109,25 @@ class Settings(BaseSettings):
     trusted_proxies: list[IPv4Network | IPv6Network] = Field(
         default_factory=lambda: [IPv4Network("127.0.0.1/32"), IPv6Network("::1/128")]
     )
+
+    @field_validator("anthropic_api_key", mode="before")
+    @classmethod
+    def _blank_key_is_unset(cls, value: object) -> object:
+        # `ANTHROPIC_API_KEY=` (empty, as in .env.example) means "not configured".
+        return None if value == "" else value
+
+    @field_validator("chat_model")
+    @classmethod
+    def _model_has_prices(cls, value: str) -> str:
+        # Imported here: pricing is a leaf module, but keep config import-light.
+        from app.services.pricing import PRICES
+
+        if value not in PRICES:
+            raise ValueError(
+                f"no prices for {value!r}; add it to app/services/pricing.py "
+                f"(known: {', '.join(sorted(PRICES))})"
+            )
+        return value
 
     @property
     def user_agent(self) -> str:

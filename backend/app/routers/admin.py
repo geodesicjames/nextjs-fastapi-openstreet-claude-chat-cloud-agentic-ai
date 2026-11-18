@@ -4,6 +4,7 @@ Every route depends on `AdminUser` (401 if signed out, 403 if not an admin).
 """
 
 import uuid
+from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -22,15 +23,18 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
 
-def _grant_out(grant: ChatGrant, settings: Settings, used_today: int) -> GrantOut:
+def _grant_out(grant: ChatGrant, settings: Settings, spent_today: Decimal) -> GrantOut:
+    budget = grant.daily_budget_usd or settings.chat_daily_budget_usd
     return GrantOut(
         id=grant.id,
         user_id=grant.user_id,
         user_email=grant.user.email,
         note=grant.note,
-        daily_token_limit=grant.daily_token_limit,
-        effective_daily_token_limit=grant.daily_token_limit or settings.chat_default_daily_tokens,
-        tokens_used_today=used_today,
+        daily_budget_usd=(
+            float(grant.daily_budget_usd) if grant.daily_budget_usd is not None else None
+        ),
+        effective_daily_budget_usd=float(budget),
+        spent_today_usd=round(float(spent_today), 4),
         expires_at=grant.expires_at,
         revoked_at=grant.revoked_at,
         created_at=grant.created_at,
@@ -38,8 +42,8 @@ def _grant_out(grant: ChatGrant, settings: Settings, used_today: int) -> GrantOu
 
 
 async def _grant_out_with_usage(db: DbSession, grant: ChatGrant, settings: Settings) -> GrantOut:
-    usage = await service.tokens_used_today_by_user(db, [grant.user_id])
-    return _grant_out(grant, settings, usage.get(grant.user_id, 0))
+    spent = await service.spent_today_by_user(db, [grant.user_id])
+    return _grant_out(grant, settings, spent.get(grant.user_id, Decimal(0)))
 
 
 # --- Access requests --------------------------------------------------------------
@@ -84,7 +88,7 @@ async def approve_access_request(
             request,
             admin,
             note=body.note,
-            daily_token_limit=body.daily_token_limit,
+            daily_budget_usd=body.daily_budget_usd,
             expires_at=body.expires_at,
         )
     except GrantConflictError:
@@ -129,10 +133,10 @@ async def deny_access_request(request_id: uuid.UUID, db: DbSession, admin: Admin
 async def list_grants(
     db: DbSession, admin: AdminUser, settings: SettingsDep, include_revoked: bool = False
 ) -> list[GrantOut]:
-    """Grants, newest first, with each user's token usage today."""
+    """Grants, newest first, with each user's spend today (USD)."""
     grants = await service.list_grants(db, include_revoked=include_revoked)
-    usage = await service.tokens_used_today_by_user(db, [g.user_id for g in grants])
-    return [_grant_out(g, settings, usage.get(g.user_id, 0)) for g in grants]
+    spent = await service.spent_today_by_user(db, [g.user_id for g in grants])
+    return [_grant_out(g, settings, spent.get(g.user_id, Decimal(0))) for g in grants]
 
 
 async def _grant_or_404(db: DbSession, grant_id: uuid.UUID) -> ChatGrant:
@@ -148,8 +152,8 @@ async def update_grant(
 ) -> GrantOut:
     """Edit a grant's daily limit, expiry or note.
 
-    Only fields present in the body change. Send `"daily_token_limit": null`
-    to go back to the default limit, or `"expires_at": null` to remove expiry.
+    Only fields present in the body change. Send `"daily_budget_usd": null`
+    to go back to the default budget, or `"expires_at": null` to remove expiry.
     """
     grant = await _grant_or_404(db, grant_id)
     try:

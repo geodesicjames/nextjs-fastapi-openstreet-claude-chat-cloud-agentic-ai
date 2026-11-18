@@ -5,7 +5,7 @@ import { useActionState } from "react";
 
 import { type AdminActionState, revokeGrant, updateGrant } from "@/lib/access-actions";
 import type { Grant } from "@/lib/api";
-import { formatDate, formatTokens, isoDate } from "@/lib/format";
+import { formatDate, formatUsd, isoDate } from "@/lib/format";
 
 import { ActionError, GrantFields, primaryButton, secondaryButton } from "./fields";
 
@@ -21,9 +21,8 @@ export function GrantRow({ grant }: { grant: Grant }) {
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="font-medium">{grant.user_email}</span>
         <span className="text-sm text-neutral-500">
-          {formatTokens(grant.tokens_used_today)} /{" "}
-          {formatTokens(grant.effective_daily_token_limit)} tokens today
-          {grant.daily_token_limit === null && " (default limit)"}
+          {formatUsd(grant.spent_today_usd)} / {formatUsd(grant.effective_daily_budget_usd)} today
+          {grant.daily_budget_usd === null && " (default budget)"}
           {" · "}
           {grant.expires_at ? `expires ${formatDate(grant.expires_at)}` : "no expiry"}
         </span>
@@ -33,7 +32,7 @@ export function GrantRow({ grant }: { grant: Grant }) {
         <GrantFields
           idPrefix={`grant-${grant.id}`}
           note={grant.note}
-          dailyTokenLimit={grant.daily_token_limit}
+          dailyBudgetUsd={grant.daily_budget_usd}
           expiresOn={grant.expires_at ? isoDate(grant.expires_at) : ""}
         />
         <div className="flex gap-2">

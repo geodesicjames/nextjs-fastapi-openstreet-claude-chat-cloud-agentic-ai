@@ -7,7 +7,14 @@ INSTALLED_APPS; SQLAlchemy only knows about classes that have been imported).
 
 from app.models.auth import LoginToken, UserSession
 from app.models.base import Base
-from app.models.chat import AccessRequest, AccessRequestStatus, ChatGrant, LlmUsage
+from app.models.chat import (
+    AccessRequest,
+    AccessRequestStatus,
+    ChatGrant,
+    ChatMessage,
+    Conversation,
+    LlmUsage,
+)
 from app.models.place import GeocodeResult, Place, PlaceCell, UpstreamCall
 from app.models.user import User
 
@@ -16,6 +23,8 @@ __all__ = [
     "AccessRequestStatus",
     "Base",
     "ChatGrant",
+    "ChatMessage",
+    "Conversation",
     "GeocodeResult",
     "LlmUsage",
     "LoginToken",

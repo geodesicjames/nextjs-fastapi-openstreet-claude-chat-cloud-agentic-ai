@@ -2,6 +2,7 @@
 
 import re
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from httpx import AsyncClient
@@ -12,7 +13,7 @@ from app.models import AccessRequest, ChatGrant, LlmUsage, User
 from tests.conftest import FakeEmailSender
 from tests.factories import grant, make_user, sign_in_as, signed_in_user
 
-DEFAULT_LIMIT = 50_000
+DEFAULT_BUDGET = 1.0
 
 
 async def submit(client: AsyncClient, email: str, message: str = "") -> None:
@@ -145,15 +146,15 @@ async def test_approve_creates_user_and_grant_and_emails_sign_in_link(
 
     response = await client.post(
         f"/admin/access-requests/{request.id}/approve",
-        json={"note": "Recruiter", "daily_token_limit": 20_000, "expires_at": expires.isoformat()},
+        json={"note": "Recruiter", "daily_budget_usd": 0.5, "expires_at": expires.isoformat()},
     )
 
     assert response.status_code == 200, response.text
     body = response.json()
     assert body["user_email"] == "grace@example.com"
     assert body["note"] == "Recruiter"
-    assert body["daily_token_limit"] == 20_000
-    assert body["effective_daily_token_limit"] == 20_000
+    assert body["daily_budget_usd"] == 0.5
+    assert body["effective_daily_budget_usd"] == 0.5
     assert datetime.fromisoformat(body["expires_at"]) == expires
 
     await db.refresh(request)
@@ -175,7 +176,7 @@ async def test_approve_creates_user_and_grant_and_emails_sign_in_link(
     assert (await client.post("/auth/verify", json={"token": match.group(1)})).status_code == 200
     access = (await client.get("/chat/access")).json()
     assert access["allowed"] is True
-    assert access["daily_token_limit"] == 20_000
+    assert access["daily_budget_usd"] == 0.5
 
 
 async def test_approve_with_defaults_follows_default_limit(
@@ -186,8 +187,8 @@ async def test_approve_with_defaults_follows_default_limit(
 
     body = (await client.post(f"/admin/access-requests/{request.id}/approve", json={})).json()
 
-    assert body["daily_token_limit"] is None
-    assert body["effective_daily_token_limit"] == DEFAULT_LIMIT
+    assert body["daily_budget_usd"] is None
+    assert body["effective_daily_budget_usd"] == DEFAULT_BUDGET
     assert body["expires_at"] is None
 
 
@@ -277,7 +278,9 @@ async def test_unknown_request_is_404(client: AsyncClient, admin: User) -> None:
     "body",
     [
         {"expires_at": "2030-01-01T00:00:00"},  # no timezone
-        {"daily_token_limit": 0},
+        {"daily_budget_usd": 0},
+        {"daily_budget_usd": 0.001},  # whole cents only
+        {"daily_budget_usd": 101},
         {"note": "x" * 501},
     ],
 )
@@ -295,53 +298,61 @@ async def test_invalid_approval_is_422(
 
 async def test_list_grants_with_usage(client: AsyncClient, db: AsyncSession, admin: User) -> None:
     grace = await make_user(db, "grace@example.com")
-    await grant(db, grace, daily_token_limit=1_000)
+    await grant(db, grace, daily_budget_usd=Decimal("0.25"))
     alan = await make_user(db, "alan@example.com")
     await grant(db, alan, revoked_at=datetime.now(UTC))
-    db.add(LlmUsage(user_id=grace.id, model="m", input_tokens=100, output_tokens=50, cost_usd=0))
+    db.add(
+        LlmUsage(
+            user_id=grace.id,
+            model="claude-haiku-5-5",
+            input_tokens=100,
+            output_tokens=50,
+            cost_usd=Decimal("0.0125"),
+        )
+    )
     await db.commit()
 
     grants = (await client.get("/admin/grants")).json()
     assert [g["user_email"] for g in grants] == ["grace@example.com"]
-    assert grants[0]["tokens_used_today"] == 150
-    assert grants[0]["effective_daily_token_limit"] == 1_000
+    assert grants[0]["spent_today_usd"] == 0.0125
+    assert grants[0]["effective_daily_budget_usd"] == 0.25
 
     everything = (await client.get("/admin/grants?include_revoked=true")).json()
     assert {g["user_email"] for g in everything} == {"grace@example.com", "alan@example.com"}
 
 
-async def test_edit_grant_limit_takes_effect(
+async def test_edit_grant_budget_takes_effect(
     client: AsyncClient, db: AsyncSession, admin: User
 ) -> None:
     grace = await make_user(db, "grace@example.com")
     g = await grant(db, grace, note="Recruiter")
 
-    response = await client.patch(f"/admin/grants/{g.id}", json={"daily_token_limit": 2_000})
+    response = await client.patch(f"/admin/grants/{g.id}", json={"daily_budget_usd": 2.5})
     assert response.status_code == 200
-    assert response.json()["daily_token_limit"] == 2_000
+    assert response.json()["daily_budget_usd"] == 2.5
     assert response.json()["note"] == "Recruiter"  # fields not sent are unchanged
 
     await sign_in_as(db, client, grace)
-    assert (await client.get("/chat/access")).json()["daily_token_limit"] == 2_000
+    assert (await client.get("/chat/access")).json()["daily_budget_usd"] == 2.5
 
 
-async def test_edit_grant_null_limit_returns_to_default(
+async def test_edit_grant_null_budget_returns_to_default(
     client: AsyncClient, db: AsyncSession, admin: User
 ) -> None:
     grace = await make_user(db, "grace@example.com")
-    g = await grant(db, grace, daily_token_limit=2_000)
+    g = await grant(db, grace, daily_budget_usd=Decimal("2.00"))
 
-    body = (await client.patch(f"/admin/grants/{g.id}", json={"daily_token_limit": None})).json()
+    body = (await client.patch(f"/admin/grants/{g.id}", json={"daily_budget_usd": None})).json()
 
-    assert body["daily_token_limit"] is None
-    assert body["effective_daily_token_limit"] == DEFAULT_LIMIT
+    assert body["daily_budget_usd"] is None
+    assert body["effective_daily_budget_usd"] == DEFAULT_BUDGET
 
 
 async def test_edit_grant_expiry_and_note(
     client: AsyncClient, db: AsyncSession, admin: User
 ) -> None:
     grace = await make_user(db, "grace@example.com")
-    g = await grant(db, grace, daily_token_limit=2_000)
+    g = await grant(db, grace, daily_budget_usd=Decimal("2.00"))
     expires = datetime.now(UTC) + timedelta(days=3)
 
     body = (
@@ -352,7 +363,7 @@ async def test_edit_grant_expiry_and_note(
 
     assert datetime.fromisoformat(body["expires_at"]) == expires
     assert body["note"] == "Extended"
-    assert body["daily_token_limit"] == 2_000
+    assert body["daily_budget_usd"] == 2.0
 
 
 async def test_edit_revoked_grant_is_409(
@@ -361,7 +372,7 @@ async def test_edit_revoked_grant_is_409(
     grace = await make_user(db, "grace@example.com")
     g = await grant(db, grace, revoked_at=datetime.now(UTC))
 
-    response = await client.patch(f"/admin/grants/{g.id}", json={"daily_token_limit": 5})
+    response = await client.patch(f"/admin/grants/{g.id}", json={"daily_budget_usd": 5})
     assert response.status_code == 409
 
 

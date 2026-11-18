@@ -34,6 +34,8 @@ def create_app() -> FastAPI:
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
         await http.aclose()
+        if app.state.anthropic is not None:
+            await app.state.anthropic.close()
 
     app = FastAPI(title="Places API", version="0.1.0", lifespan=lifespan)
 
@@ -43,6 +45,9 @@ def create_app() -> FastAPI:
     app.state.overpass = OverpassClient(http=http)
     app.state.nominatim = NominatimClient(http=http)
     app.state.rate_limiter = RateLimiter()
+    # The Anthropic client is created on first use (app/deps.py), so the app
+    # starts without an API key; chat then answers 503 until one is set.
+    app.state.anthropic = None
 
     # No CORS middleware: browsers never call this API directly. They talk
     # only to Next.js, which calls FastAPI server-side and forwards the
