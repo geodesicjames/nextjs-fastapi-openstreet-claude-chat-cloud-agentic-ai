@@ -1,20 +1,23 @@
-"""Conversations with Claude: history, one streamed reply per user message.
+"""Conversations with Claude: history, and one streamed, tool-using turn per message.
 
-A turn:
-1. Lock the conversation row (one reply at a time per conversation).
-2. Replay the stored history plus the new user message to the model.
-3. Stream text to the caller as it arrives.
-4. Save the user message, the assistant reply (all its content blocks,
-   unchanged) and the call's usage/cost in a single commit.
+A turn (`stream_reply`):
+1. Lock the conversation row (one turn at a time per conversation).
+2. Call the model with the stored history, the new user message and the
+   tools (app/services/chat_tools.py), streaming text to the caller.
+3. If the model asks for tools, validate and run them, send all results
+   back in a single message, and call the model again. Repeat until it
+   answers. Guardrails: at most CHAT_MAX_TOOL_STEPS tool steps (then one
+   last call with tools disabled, so it answers with what it has), and the
+   daily budget is checked again before every further call.
+4. Save the whole turn (user message, assistant replies, tool results) and
+   every call's usage in one commit.
 
-If the call fails, nothing is saved: the user sees an error and can resend,
-and the history never holds a user message without its reply. History is
-append-only: rows are never edited, so the replayed prefix stays byte-for-
-byte identical (required for the model's replayed thinking blocks, and what
-makes prompt caching hit).
-
-Tool use arrives in the next PR; this module already yields the event types
-the frontend consumes.
+A turn is only saved if it ends in a state the API accepts when replayed:
+an answer, not an unanswered or cut-off tool call. Otherwise (API failure,
+refusal mid-tool-call, budget running out) the messages are dropped but the
+usage of every call already made is still logged. History is append-only:
+rows are never edited, so the replayed prefix stays byte-for-byte identical
+(required for replayed thinking blocks, and what makes prompt caching hit).
 """
 
 import logging
@@ -22,6 +25,7 @@ import uuid
 from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
+from decimal import Decimal
 from typing import Any, cast
 
 from anthropic.types import MessageParam
@@ -31,7 +35,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
 from app.models import ChatMessage, Conversation, User
-from app.services.chat_access import ChatStatus, record_usage
+from app.services.chat_access import ChatStatus, get_chat_status, record_usage
+from app.services.chat_tools import TOOLS, ToolContext, ToolOutcome, run_tool
 from app.services.llm import ChatModel, ModelReply, ModelUnavailableError, TextDelta
 
 logger = logging.getLogger(__name__)
@@ -39,18 +44,30 @@ logger = logging.getLogger(__name__)
 # Kept byte-for-byte stable (no dates, no per-user text) so it caches.
 SYSTEM_PROMPT = """\
 You are the assistant inside "Places", a web app with an OpenStreetMap-based \
-map for finding places such as cafés, restaurants, parks, toilets, drinking \
-water and viewpoints.
+map for finding cafés, restaurants, parks, toilets, drinking water and \
+viewpoints. People ask you where to go; you answer from the app's own map \
+data using your tools.
 
-Help people decide where to go: answer questions about places and areas, \
-suggest what to look for, and explain how to use the map.
+How to work:
+- When the user mentions a place by name, call find_location first, then \
+search_places around the best match. If the name is ambiguous, pick the \
+likeliest match and say which one you used.
+- Only recommend places that search_places returned. Never invent \
+businesses, addresses, opening hours or prices. If a search finds nothing, \
+say so and suggest a larger radius or another category.
+- For questions about a specific place (opening hours, website, \
+accessibility), call get_place_details and answer from its tags. If a \
+detail isn't there, say it isn't listed.
+- Only call save_place when the user asks to save or remember a place.
+- If a tool says data may be missing or a service is unavailable, tell the \
+user briefly.
+- The app shows the places you find on the map next to this chat, so you \
+don't need to give coordinates or links.
 
-You don't have live access to the map's data in this version. Don't invent \
-specific businesses, addresses, opening hours or prices; say you can't look \
-them up yet and suggest searching on the map instead.
-
-Keep answers short and practical. Use plain language and simple Markdown \
-(short lists are fine; no tables)."""
+Keep answers short and practical: a few sentences or a short list with \
+names and walking distances (for example "Bean There, 250 m"). Use plain \
+language and simple Markdown (no tables). Data comes from OpenStreetMap \
+and may be out of date."""
 
 TITLE_LENGTH = 80
 
@@ -76,13 +93,30 @@ class DoneEvent:
 
 @dataclass(frozen=True)
 class ErrorEvent:
-    # refused | unavailable | busy
+    # refused | unavailable | busy | budget | truncated
     code: str
     message: str
     type: str = "error"
 
 
-ChatEvent = TextEvent | DoneEvent | ErrorEvent
+@dataclass(frozen=True)
+class ToolStartEvent:
+    tool: str
+    input: dict[str, Any]
+    type: str = "tool_start"
+
+
+@dataclass(frozen=True)
+class ToolResultEvent:
+    tool: str
+    ok: bool
+    summary: str
+    # Places to show on the map: place_id, name, category, lat, lon.
+    places: list[dict[str, Any]]
+    type: str = "tool_result"
+
+
+ChatEvent = TextEvent | ToolStartEvent | ToolResultEvent | DoneEvent | ErrorEvent
 
 
 def event_payload(event: ChatEvent) -> dict[str, Any]:
@@ -165,6 +199,7 @@ async def stream_reply(
     access: ChatStatus,
     conversation: Conversation,
     text: str,
+    tools: ToolContext,
 ) -> AsyncIterator[ChatEvent]:
     """Run one turn, yielding events for the client. Never raises for API errors."""
     if not await _lock(db, conversation):
@@ -172,68 +207,127 @@ async def stream_reply(
         return
 
     history = await load_messages(db, conversation)
-    user_content: list[dict[str, Any]] = [{"type": "text", "text": text}]
-    messages = [cast(MessageParam, {"role": m.role, "content": m.content}) for m in history]
-    messages.append(cast(MessageParam, {"role": "user", "content": user_content}))
+    # This turn's messages, in order, saved together at the end.
+    turn: list[tuple[str, list[dict[str, Any]]]] = [("user", [{"type": "text", "text": text}])]
+    tool_steps = 0
+    answer_now = False  # set once the tool-step cap is reached
+    total_cost = Decimal(0)
 
-    reply: ModelReply | None = None
-    try:
-        async for item in model.stream(
-            model=settings.chat_model,
-            system=SYSTEM_PROMPT,
-            messages=messages,
-            max_tokens=settings.chat_max_tokens,
-            effort=settings.chat_effort,
-        ):
-            if isinstance(item, TextDelta):
-                yield TextEvent(item.text)
-            else:
-                reply = item
-    except ModelUnavailableError:
-        await db.rollback()  # releases the lock; nothing was saved
-        yield ErrorEvent("unavailable", "The assistant is unavailable right now. Please try again.")
-        return
-    if reply is None:  # a ChatModel must end with a reply; treat as unavailable
-        await db.rollback()
-        yield ErrorEvent("unavailable", "The assistant is unavailable right now. Please try again.")
-        return
-
-    # A refusal can arrive with no content at all. The API rejects empty
-    # assistant turns on replay, so such a turn isn't added to the history
-    # (there's nothing in it to preserve); its cost is still logged.
-    message_id: uuid.UUID | None = None
-    if reply.content:
-        seq = len(history)
-        db.add(
-            ChatMessage(conversation_id=conversation.id, seq=seq, role="user", content=user_content)
+    async def give_up(code: str, message: str) -> AsyncIterator[ChatEvent]:
+        # Keep the usage of calls already made; drop this turn's messages.
+        await db.commit()
+        yield ErrorEvent(code, message)
+        yield DoneEvent(
+            message_id=None, stop_reason=None, truncated=False, cost_usd=float(total_cost)
         )
-        assistant = ChatMessage(
-            conversation_id=conversation.id, seq=seq + 1, role="assistant", content=reply.content
-        )
-        db.add(assistant)
-        await db.flush()
-        message_id = assistant.id
-        if not history:
-            conversation.title = text.strip()[:TITLE_LENGTH] or conversation.title
-        conversation.updated_at = datetime.now(UTC)
 
-    usage_row = await record_usage(
-        db,
-        user=access.user,
-        grant=access.grant,
-        model=reply.model,
-        usage=reply.usage,
-        stop_reason=reply.stop_reason,
-        conversation_id=conversation.id,
-        commit=False,
-    )
+    while True:
+        if tool_steps > 0:
+            status = await get_chat_status(db, settings, access.user)
+            if status.denial is not None:
+                async for event in give_up("budget", "Today's chat budget ran out mid-answer."):
+                    yield event
+                return
+
+        messages = [cast(MessageParam, {"role": m.role, "content": m.content}) for m in history]
+        messages += [cast(MessageParam, {"role": role, "content": c}) for role, c in turn]
+        reply: ModelReply | None = None
+        try:
+            async for item in model.stream(
+                model=settings.chat_model,
+                system=SYSTEM_PROMPT,
+                messages=messages,
+                max_tokens=settings.chat_max_tokens,
+                effort=settings.chat_effort,
+                tools=TOOLS,
+                tool_choice={"type": "none"} if answer_now else None,
+            ):
+                if isinstance(item, TextDelta):
+                    yield TextEvent(item.text)
+                else:
+                    reply = item
+        except ModelUnavailableError:
+            reply = None
+        if reply is None:
+            async for event in give_up(
+                "unavailable", "The assistant is unavailable right now. Please try again."
+            ):
+                yield event
+            return
+
+        usage_row = await record_usage(
+            db,
+            user=access.user,
+            grant=access.grant,
+            model=reply.model,
+            usage=reply.usage,
+            stop_reason=reply.stop_reason,
+            conversation_id=conversation.id,
+            commit=False,
+        )
+        total_cost += usage_row.cost_usd
+        tool_uses = [b for b in reply.content if b.get("type") == "tool_use"]
+
+        # Stop conditions that leave nothing valid to replay.
+        if reply.stop_reason == "refusal" and (tool_uses or not reply.content):
+            async for event in give_up("refused", "Sorry, I can't help with that request."):
+                yield event
+            return
+        if tool_uses and (reply.stop_reason == "max_tokens" or answer_now):
+            async for event in give_up(
+                "truncated", "That answer got too long. Try asking something more specific."
+            ):
+                yield event
+            return
+
+        turn.append(("assistant", reply.content))
+        if not tool_uses:
+            break
+
+        # Run every requested tool, then send all results back in one message.
+        tool_steps += 1
+        results: list[dict[str, Any]] = []
+        for block in tool_uses:
+            name, raw_input = str(block.get("name")), block.get("input")
+            yield ToolStartEvent(name, raw_input if isinstance(raw_input, dict) else {})
+            try:
+                outcome = await run_tool(tools, name, raw_input)
+            except Exception:  # a bug or DB failure in a tool must not kill the stream
+                logger.exception("Tool %s failed", name)
+                outcome = ToolOutcome(
+                    '{"error": "The tool failed."}', is_error=True, summary="Failed"
+                )
+            yield ToolResultEvent(name, not outcome.is_error, outcome.summary, outcome.places)
+            result: dict[str, Any] = {
+                "type": "tool_result",
+                "tool_use_id": block.get("id"),
+                "content": outcome.content,
+            }
+            if outcome.is_error:
+                result["is_error"] = True
+            results.append(result)
+        turn.append(("user", results))
+        if tool_steps >= settings.chat_max_tool_steps:
+            answer_now = True  # one more call, with tools disabled
+
+    # Save the whole turn.
+    seq = len(history)
+    rows = [
+        ChatMessage(conversation_id=conversation.id, seq=seq + i, role=role, content=content)
+        for i, (role, content) in enumerate(turn)
+    ]
+    db.add_all(rows)
+    await db.flush()
+    if not history:
+        conversation.title = text.strip()[:TITLE_LENGTH] or conversation.title
+    conversation.updated_at = datetime.now(UTC)
     await db.commit()
 
     if reply.stop_reason == "refusal":
         yield ErrorEvent("refused", "Sorry, I can't help with that request.")
     yield DoneEvent(
-        message_id=message_id,
+        message_id=rows[-1].id,
         stop_reason=reply.stop_reason,
         truncated=reply.stop_reason == "max_tokens",
-        cost_usd=float(usage_row.cost_usd),
+        cost_usd=float(total_cost),
     )

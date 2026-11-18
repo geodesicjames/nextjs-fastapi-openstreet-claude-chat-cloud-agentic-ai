@@ -15,7 +15,7 @@ from app.models.chat import (
     Conversation,
     LlmUsage,
 )
-from app.models.place import GeocodeResult, Place, PlaceCell, UpstreamCall
+from app.models.place import GeocodeResult, Place, PlaceCell, SavedPlace, UpstreamCall
 from app.models.user import User
 
 __all__ = [
@@ -30,6 +30,7 @@ __all__ = [
     "LoginToken",
     "Place",
     "PlaceCell",
+    "SavedPlace",
     "UpstreamCall",
     "User",
     "UserSession",

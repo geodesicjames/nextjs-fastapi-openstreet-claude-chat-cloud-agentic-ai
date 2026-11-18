@@ -5,8 +5,10 @@ which enforces sign-in, the invite-only grant and the daily budget.
 
 Replies stream as server-sent events (SSE): a `text/event-stream` response
 made of `event: <type>` / `data: <json>` pairs. Event types: `text` (a
-chunk of the reply), `error` (`code`: refused | unavailable | busy) and
-`done` (stop reason, truncated flag, cost). SSE over a POST is read with
+chunk of the reply), `tool_start` / `tool_result` (what the assistant is
+looking up, with places to show on the map), `error` (`code`: refused |
+unavailable | busy | budget | truncated) and `done` (stop reason, truncated
+flag, total cost of the turn). SSE over a POST is read with
 fetch() streaming in the browser; EventSource only supports GET.
 """
 
@@ -15,7 +17,7 @@ import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.config import Settings, get_settings
@@ -29,6 +31,7 @@ from app.schemas.chat import (
 )
 from app.services import chat as chat_service
 from app.services.chat_access import get_chat_status
+from app.services.chat_tools import ToolContext
 from app.services.llm import ChatModel
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -83,6 +86,8 @@ async def get_conversation(
                 created_at=m.created_at,
             )
             for m in messages
+            # Tool calls and results have no text to show.
+            if chat_service.visible_text(m)
         ],
     )
 
@@ -91,6 +96,7 @@ async def get_conversation(
 async def send_message(
     conversation_id: uuid.UUID,
     body: MessageIn,
+    request: Request,
     db: StreamingDbSession,
     access: ChatAccess,
     settings: SettingsDep,
@@ -106,9 +112,17 @@ async def send_message(
     if conversation is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found.")
 
+    tools = ToolContext(
+        db=db,
+        settings=settings,
+        user=access.user,
+        overpass=request.app.state.overpass,
+        nominatim=request.app.state.nominatim,
+    )
+
     async def events() -> AsyncIterator[str]:
         async for event in chat_service.stream_reply(
-            db, settings, model, access, conversation, body.text
+            db, settings, model, access, conversation, body.text, tools
         ):
             yield f"event: {event.type}\ndata: {json.dumps(chat_service.event_payload(event))}\n\n"
 
