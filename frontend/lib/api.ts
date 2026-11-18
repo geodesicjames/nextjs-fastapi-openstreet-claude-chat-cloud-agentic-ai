@@ -139,3 +139,41 @@ export function getPendingAccessRequests(): Promise<AccessRequest[] | null> {
 export function getActiveGrants(): Promise<Grant[] | null> {
   return getJson<Grant[]>("/admin/grants");
 }
+
+// --- Proxy for browser-side calls ----------------------------------------------------
+
+/**
+ * Forward a browser request to a public FastAPI endpoint and pass the answer
+ * straight back (status, JSON body and Retry-After).
+ *
+ * Used by route handlers under app/api/ for data the browser loads itself,
+ * like map places on every pan, so the browser still only talks to this
+ * origin. X-Forwarded-For carries the visitor's IP so FastAPI's per-IP rate
+ * limits apply to the visitor, not to this server. Next.js fills that header
+ * from the socket if the browser didn't send one; in production the load
+ * balancer in front appends the real address, which FastAPI reads first.
+ */
+export async function forwardToApi(request: Request, path: string): Promise<Response> {
+  const headers = new Headers({ accept: "application/json" });
+  const forwardedFor = request.headers.get("x-forwarded-for");
+  if (forwardedFor) headers.set("x-forwarded-for", forwardedFor);
+
+  let res: Response;
+  try {
+    res = await fetch(apiUrl(path), {
+      headers,
+      cache: "no-store",
+      // Longer than FastAPI's own upstream timeouts, so its answer (possibly
+      // "incomplete") arrives instead of us giving up first.
+      signal: AbortSignal.timeout(20_000),
+    });
+  } catch (error) {
+    console.error(`forwardToApi ${path}:`, error);
+    return Response.json({ detail: "The map service is unavailable." }, { status: 502 });
+  }
+
+  const out = new Headers({ "content-type": "application/json" });
+  const retryAfter = res.headers.get("retry-after");
+  if (retryAfter) out.set("retry-after", retryAfter);
+  return new Response(res.body, { status: res.status, headers: out });
+}
