@@ -54,7 +54,9 @@ frontend/
   lib/auth-actions.ts  Server Actions for sign-in and sign-out
   lib/access-actions.ts  Server Actions for requesting access and the admin page
   app/map/         the map page (MapLibre GL, a Client Component)
-  app/api/         route handlers the map calls from the browser (proxy to FastAPI)
+  app/api/         route handlers the map and chat call from the browser (proxy to FastAPI)
+  lib/chat.ts      chat types and the streamed-reply (SSE) reader
+  lib/markdown.tsx tiny Markdown renderer for chat replies (React elements only)
   scripts/         copy-maplibre-worker.mjs (see Decisions)
 docker-compose.yml
 ```
@@ -203,7 +205,15 @@ http://localhost:3000/map shows a vector map (MapLibre GL with
 [OpenFreeMap](https://openfreemap.org) tiles; no API key). Zoom in to level 13
 or closer and places load for the visible area, refreshing as you pan. You can
 filter by category, search for a place (on submit), and click a place for its
-opening hours, website and a link to OpenStreetMap. To use another tile
+opening hours, website and a link to OpenStreetMap.
+
+The side panel has three tabs:
+- **Explore:** the search, filters and list above.
+- **Ask:** chat with the assistant, for invited users. Replies stream in, each
+  tool step shows as a status line ("Searching cafés within 500 m · Found 27
+  places"), and the places it finds appear on the map as larger, outlined
+  markers.
+- **Saved:** places the assistant saved for you. To use another tile
 provider, set `NEXT_PUBLIC_MAP_STYLE_URL` to its style URL. Tile keys are
 public by design.
 
@@ -305,6 +315,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Map data via Next.js route handlers** | The map is browser code, so it can't use Server Components to fetch on every pan. `/api/places` and `/api/geocode` forward to FastAPI server-side, so the browser still only talks to the Next.js origin and FastAPI stays private. |
 | **Per-IP limits trust the edge proxy** | Next.js only fills in `X-Forwarded-For` when the request doesn't already have one, so with nothing in front of it (local dev) a client could fake its IP. In production the load balancer appends the real address, and FastAPI reads the header right to left. Per-IP limits are for fairness; the OSM usage budgets are enforced across the whole backend, so faked IPs can't push us over them. |
 | **MapLibre's worker is copied into `public/`** | MapLibre parses tiles in a Web Worker that it loads from a URL it works out at runtime, which bundlers can't follow. `pnpm dev` and `pnpm build` copy the installed worker to `public/vendor/` (gitignored), and the map calls `setWorkerUrl`. |
+| **Chat goes through Next.js route handlers too** | The browser streams replies from `/api/chat/...`, which forwards to FastAPI with the session cookie and passes the server-sent events straight through as they arrive. For requests that change data, the handler also refuses a foreign `Origin` header, as a second CSRF defence behind the SameSite=Lax cookie. |
+| **A tiny Markdown renderer, not a library** | Chat replies only need paragraphs, lists and bold. The renderer builds React elements, so model output is always escaped (no `dangerouslySetInnerHTML`), and there's no new dependency. |
 | **OSM links only if http(s)** | Anyone can edit OSM tags, so a `website` tag could be a `javascript:` URL. The details panel only links http and https addresses. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |
