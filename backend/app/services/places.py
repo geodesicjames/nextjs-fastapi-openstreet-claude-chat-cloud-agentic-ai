@@ -19,8 +19,9 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Literal
 
+from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_X, ST_Y, ST_Intersects, ST_MakeEnvelope
-from sqlalchemy import delete, select, tuple_
+from sqlalchemy import cast, delete, func, select, tuple_
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -165,19 +166,42 @@ async def search_places(
     overpass: OverpassClient,
     bbox: BBox,
     categories: list[str],
+    *,
+    name: str | None = None,
+    nearest_to: tuple[float, float] | None = None,
 ) -> SearchResult:
-    """Places of the given categories in `bbox`, fetching missing cells first."""
+    """Places of the given categories in `bbox`, fetching missing cells first.
+
+    `name`: only places whose name contains it, ignoring case and accents
+    ("soderberg" matches "Söderberg").
+    `nearest_to`: (lat, lon) to order by real distance from, so that if
+    there are more than MAX_RESULTS matches the nearest are kept. Without
+    it, results are ordered by name (fine for the map, which shows them all).
+    """
     reason: IncompleteReason | None = None
     missing = await stale_cells(db, settings, cells_for(bbox))
     if missing:
         reason = await refresh_cells(db, settings, overpass, missing)
 
-    rows = await db.execute(
-        select(Place, ST_X(Place.geom), ST_Y(Place.geom))
-        .where(ST_Intersects(Place.geom, envelope(bbox)), Place.category.in_(categories))
-        .order_by(Place.name.asc().nulls_last(), Place.id)
-        .limit(MAX_RESULTS + 1)
+    query = select(Place, ST_X(Place.geom), ST_Y(Place.geom)).where(
+        ST_Intersects(Place.geom, envelope(bbox)), Place.category.in_(categories)
     )
+    if name:
+        query = query.where(
+            func.unaccent(func.lower(Place.name)).like(
+                func.unaccent(func.lower(f"%{_escape_like(name)}%")), escape="\\"
+            )
+        )
+    if nearest_to is not None:
+        lat, lon = nearest_to
+        point = func.ST_SetSRID(func.ST_MakePoint(lon, lat), 4326)
+        # Geography: distance in metres on the sphere, not distorted degrees.
+        query = query.order_by(
+            func.ST_Distance(cast(Place.geom, Geography), cast(point, Geography)), Place.id
+        )
+    else:
+        query = query.order_by(Place.name.asc().nulls_last(), Place.id)
+    rows = await db.execute(query.limit(MAX_RESULTS + 1))
     hits = [PlaceHit(place, float(lon), float(lat)) for place, lon, lat in rows]
     return SearchResult(
         hits=hits[:MAX_RESULTS],
@@ -185,6 +209,11 @@ async def search_places(
         incomplete_reason=reason,
         truncated=len(hits) > MAX_RESULTS,
     )
+
+
+def _escape_like(text: str) -> str:
+    """Make `%`, `_` and the escape character itself match literally in LIKE."""
+    return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 async def get_place(db: AsyncSession, place_id: uuid.UUID) -> PlaceHit | None:
