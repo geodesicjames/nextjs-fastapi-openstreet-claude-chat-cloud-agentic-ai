@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Somewhere for lunch near Haymarket station"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Haymarket station, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Haymarket\", \"display_name\": \"Haymarket, Distillery Lane, Dalry, City of Edinburgh, Scotland, EH11 2AU, United Kingdom\", \"lat\": 55.9451838, \"lon\": -3.2193738, \"kind\": \"railway:station\"}, {\"name\": \"Haymarket\", \"display_name\": \"Haymarket, West End, City of Edinburgh, Scotland, EH11 2BG, United Kingdom\", \"lat\": 55.9459752, \"lon\": -3.2171336, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9451838,\n  \"lon\": -3.2193738,\n  \"radius_m\": 500,\n  \"categories\": [\n    \"restaurant\",\n    \"cafe\"\n  ]\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"74834126-c579-4d20-a8e1-1de78baa1ff8\", \"name\": \"Timorous Beastie Street Coffee\", \"category\": \"cafe\", \"distance_m\": 30, \"lat\": 55.945291, \"lon\": -3.218938}, {\"place_id\": \"7838faf8-b27e-48eb-8e77-c5b51096c6ca\", \"name\": \"AMT Coffee\", \"category\": \"cafe\", \"distance_m\": 74, \"lat\": 55.945529, \"lon\": -3.21835}, {\"place_id\": \"2c3f61b7-c5a6-4386-9bc9-850efeac1f83\", \"name\": \"Nomad\", \"category\": \"cafe\", \"distance_m\": 91, \"lat\": 55.946001, \"lon\": -3.219365}, {\"place_id\": \"ecfe9767-d52f-40c5-9c00-25641f86032a\", \"name\": \"Arboosh\", \"category\": \"cafe\", \"distance_m\": 94, \"lat\": 55.946006, \"lon\": -3.219713}, {\"place_id\": \"46740d17-1bba-4b14-8bf3-a3d8aedab71e\", \"name\": \"Medo Cafe\", \"category\": \"cafe\", \"distance_m\": 98, \"lat\": 55.944819, \"lon\": -3.21794}, {\"place_id\": \"34d9ce35-1778-463f-8548-0e4eb73178d7\", \"name\": \"La Bruschetta\", \"category\": \"restaurant\", \"distance_m\": 98, \"lat\": 55.946005, \"lon\": -3.218793}, {\"place_id\": \"67c63bd4-5c9c-4be5-a19d-6c3ee5b9cc23\", \"name\": \"Twelve Triangles\", \"category\": \"cafe\", \"distance_m\": 98, \"lat\": 55.944772, \"lon\": -3.217974}, {\"place_id\": \"7a432b16-7082-4b1c-8ac5-ae358d92fa40\", \"name\": \"Sandwich Culture\", \"category\": \"cafe\", \"distance_m\": 99, \"lat\": 55.94601, \"lon\": -3.219968}, {\"place_id\": \"65fda598-e9be-46c3-b5aa-5d77283dd749\", \"name\": \"Viet Nam House\", \"category\": \"cafe\", \"distance_m\": 102, \"lat\": 55.946011, \"lon\": -3.220099}, {\"place_id\": \"d0fdac01-c11f-44ce-a3ac-0350a8cdc2fa\", \"name\": \"Throat Punch Coffee Co\", \"category\": \"cafe\", \"distance_m\": 103, \"lat\": 55.945113, \"lon\": -3.217728}, {\"place_id\": \"e83bb848-a2e9-401a-b320-9eb0d4861258\", \"name\": \"Roasters Artisan Coffee\", \"category\": \"cafe\", \"distance_m\": 110, \"lat\": 55.944448, \"lon\": -3.218193}, {\"place_id\": \"02c3499e-ac8f-4145-9d0f-ca2d5ac4099a\", \"name\": \"Troy\", \"category\": \"cafe\", \"distance_m\": 110, \"lat\": 55.945248, \"lon\": -3.217605}, {\"place_id\": \"44e6ac41-c3d5-4b4e-869a-35bc1f07efa8\", \"name\": \"Haymarket Café by L&G\", \"category\": \"cafe\", \"distance_m\": 111, \"lat\": 55.946015, \"lon\": -3.220354}, {\"place_id\": \"583269c3-0567-4f45-9845-97b441ce988f\", \"name\": \"Qevani's Crepe House\", \"category\": \"cafe\", \"distance_m\": 116, \"lat\": 55.944343, \"lon\": -3.218259}, {\"place_id\": \"d37f7a3b-9d3c-471a-b06f-6dc00fd3cd3b\", \"name\": \"dahné\", \"category\": \"cafe\", \"distance_m\": 123, \"lat\": 55.944842, \"lon\": -3.217497}, {\"place_id\": \"6c6b37da-7a89-4440-b995-ab035ccca723\", \"name\": \"Nam\", \"category\": \"restaurant\", \"distance_m\": 124, \"lat\": 55.94602, \"lon\": -3.220699}, {\"place_id\": \"5ad9290b-d005-4639-8d84-e853d7a36f90\", \"name\": \"Starbucks\", \"category\": \"cafe\", \"distance_m\": 128, \"lat\": 55.945742, \"lon\": -3.217577}, {\"place_id\": \"9b87588b-08ff-462e-8732-d0b997868d3f\", \"name\": \"Pizza Geeks\", \"category\": \"restaurant\", \"distance_m\": 138, \"lat\": 55.945298, \"lon\": -3.217169}, {\"place_id\": \"321cc3c8-c596-4a9a-9e4b-a8816921f0a2\", \"name\": \"Xiangbala Hotpot\", \"category\": \"restaurant\", \"distance_m\": 140, \"lat\": 55.944212, \"lon\": -3.217955}, {\"place_id\": \"00d7be3e-461c-465c-97aa-02857079ef68\", \"name\": \"Los Amigos\", \"category\": \"restaurant\", \"distance_m\": 141, \"lat\": 55.945349, \"lon\": -3.217132}], \"total_found\": 69}"
+ },
+ {
+  "role": "assistant",
+  "content": "Around Haymarket station there are plenty of lunch options within a few minutes' walk. Restaurants nearest the station:\n\n- **La Bruschetta**, about 100 m\n- **Nam**, about 125 m\n- **Pizza Geeks**, about 140 m\n- **Xiangbala Hotpot**, about 140 m\n- **Los Amigos**, about 140 m\n\nFor a quicker bite, **Sandwich Culture** (about 100 m) and **Viet Nam House** (about 100 m, listed as a café) are both close. I haven't checked opening hours, so look those up before you go if timing matters."
+ }
+]

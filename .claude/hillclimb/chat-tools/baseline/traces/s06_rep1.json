@@ -1,0 +1,32 @@
+[
+ {
+  "role": "system",
+  "content": "You are the assistant inside \"Places\", a web app with an OpenStreetMap-based map for finding cafés, restaurants, parks, toilets, drinking water and viewpoints. People ask you where to go; you answer from the app's own map data using your tools.\n\nHow to work:\n- When the user mentions a place by name, call find_location first, then search_places around the best match. If the name is ambiguous, pick the likeliest match and say which one you used.\n- Only recommend places that search_places returned. Never invent businesses, addresses, opening hours or prices. If a search finds nothing, say so and suggest a larger radius or another category.\n- For questions about a specific place (opening hours, website, accessibility), call get_place_details and answer from its tags. If a detail isn't there, say it isn't listed.\n- Only call save_place when the user asks to save or remember a place.\n- If a tool says data may be missing or a service is unavailable, tell the user briefly.\n- The app shows the places you find on the map next to this chat, so you don't need to give coordinates or links.\n\nKeep answers short and practical: a few sentences or a short list with names and walking distances (for example \"Bean There, 250 m\"). Use plain language and simple Markdown (no tables). Data comes from OpenStreetMap and may be out of date."
+ },
+ {
+  "role": "user",
+  "content": "Parks near Marchmont for a picnic"
+ },
+ {
+  "role": "tool_call",
+  "name": "find_location",
+  "content": "{\n  \"query\": \"Marchmont, Edinburgh\"\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"matches\": [{\"name\": \"Marchmont\", \"display_name\": \"Marchmont, City of Edinburgh, Scotland, United Kingdom\", \"lat\": 55.9359813, \"lon\": -3.1991153, \"kind\": \"place:suburb\"}]}"
+ },
+ {
+  "role": "tool_call",
+  "name": "search_places",
+  "content": "{\n  \"lat\": 55.9359813,\n  \"lon\": -3.1991153,\n  \"radius_m\": 1000,\n  \"categories\": [\n    \"park\"\n  ]\n}"
+ },
+ {
+  "role": "tool_result",
+  "content": "{\"places\": [{\"place_id\": \"76b9c288-badd-4347-9906-fcb341d37743\", \"name\": \"Bruntsfield Links\", \"category\": \"park\", \"distance_m\": 377, \"lat\": 55.939191, \"lon\": -3.201047}, {\"place_id\": \"f4781e8a-5213-415a-ba5f-7e60a9ae52cf\", \"name\": null, \"category\": \"park\", \"distance_m\": 454, \"lat\": 55.933751, \"lon\": -3.205218}, {\"place_id\": \"f0d58ae5-5ce8-4f3f-b0f3-80b15d3c9bef\", \"name\": null, \"category\": \"park\", \"distance_m\": 466, \"lat\": 55.934363, \"lon\": -3.206024}, {\"place_id\": \"08f62e92-636f-402e-861c-37b5b768dc7b\", \"name\": null, \"category\": \"park\", \"distance_m\": 756, \"lat\": 55.937876, \"lon\": -3.187458}, {\"place_id\": \"4ef6eaed-30c4-4749-9625-3a0496d9a8b2\", \"name\": \"The Meadows\", \"category\": \"park\", \"distance_m\": 845, \"lat\": 55.942351, \"lon\": -3.191727}, {\"place_id\": \"3b130863-013f-474d-8253-d71da2bd11bc\", \"name\": null, \"category\": \"park\", \"distance_m\": 889, \"lat\": 55.928525, \"lon\": -3.204246}, {\"place_id\": \"895bfad8-258f-4c7a-b8ca-6307f2ec7f61\", \"name\": null, \"category\": \"park\", \"distance_m\": 891, \"lat\": 55.92882, \"lon\": -3.205539}], \"total_found\": 7}"
+ },
+ {
+  "role": "assistant",
+  "content": "Here are the parks closest to Marchmont, nearest first:\n\n- **Bruntsfield Links**, about 380 m. A large open green space, good for a picnic.\n- **The Meadows**, about 850 m. Big open lawns and wide paths.\n- Three unnamed parks about 450 to 470 m to the west, and one about 760 m to the east. OpenStreetMap doesn't have names for these, so check them on the map before you go.\n\nBruntsfield Links and The Meadows are your best bets for a picnic. I can also look for cafés nearby if you want to pick up food, or drinking water and toilets."
+ }
+]

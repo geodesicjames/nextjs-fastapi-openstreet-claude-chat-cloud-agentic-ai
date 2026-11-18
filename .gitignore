@@ -37,3 +37,9 @@ npm-debug.log*
 !.vscode/extensions.json
 .DS_Store
 Thumbs.db
+
+# Eval runs: report and derived files are regenerated; results and traces are committed.
+.claude/hillclimb/**/report.html
+.claude/hillclimb/**/trajectory/
+.claude/hillclimb/**/state.json
+.claude/hillclimb/**/*.before-regrade.jsonl

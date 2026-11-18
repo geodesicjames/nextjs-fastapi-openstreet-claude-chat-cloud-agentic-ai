@@ -233,6 +233,29 @@ public by design.
   (`NOMINATIM_DAILY_QUERY_BUDGET`, 1000), and older cached results
   (`"stale": true`) if Nominatim can't be reached.
 
+### Evals
+
+`backend/evals/chat_tools/` is an eval of the chat's tool use. It runs 26 questions
+through the real chat code with the real model, against frozen Edinburgh map data.
+It grades whether the right tools were called with sensible arguments (`tool_use`, checked
+in code) and whether the answer only states what the tools returned (`grounded`, checked
+by a Sonnet 5.5 judge). The baseline on Haiku 5.5 is **98% tool_use and 81% grounded**. See
+`.claude/hillclimb/chat-tools/metrics.md` for the metrics, the limitations and the findings.
+
+```bash
+cd backend
+uv run python -m evals.chat_tools.run_eval --approve-harness  # after reviewing any eval change
+uv run python -m evals.chat_tools.run_eval --reps 2 --variant v1  # a new variant (~$0.55, mostly the judge)
+uv run python -m evals.chat_tools.run_eval --regrade           # re-judge stored answers only
+uv run python -m evals.chat_tools.check_judge                  # judge sanity checks (~$0.08)
+```
+
+Runs use real API calls, so they're manual, never in CI. The runner refuses to run if
+its runner, grader, cases or fixture changed since you last approved them. The grader's
+code checks have offline tests (`tests/test_eval_grader.py`) that run in CI. Results go
+to `.claude/hillclimb/chat-tools/<variant>/`; the report is built with the Claude API
+skill's `build-report-lite.mjs`.
+
 ### Git hooks (once per clone)
 
 ```bash
@@ -318,5 +341,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Chat goes through Next.js route handlers too** | The browser streams replies from `/api/chat/...`, which forwards to FastAPI with the session cookie and passes the server-sent events straight through as they arrive. For requests that change data, the handler also refuses a foreign `Origin` header, as a second CSRF defence behind the SameSite=Lax cookie. |
 | **A tiny Markdown renderer, not a library** | Chat replies only need paragraphs, lists and bold. The renderer builds React elements, so model output is always escaped (no `dangerouslySetInnerHTML`), and there's no new dependency. |
 | **OSM links only if http(s)** | Anyone can edit OSM tags, so a `website` tag could be a `javascript:` URL. The details panel only links http and https addresses. |
+| **Evals call the real entry point with stubbed external services** | The eval runs `chat.stream_reply` with the real model and real tools, so prompt, tool and loop changes are all measured. Only Overpass and Nominatim are replaced, by a frozen fixture and a gazetteer, so runs are reproducible and cost nothing in OSM usage. |
+| **Tool use graded in code, grounding by a judge** | Whether the right tools were called with sensible arguments is checkable in code: properties, not an exact sequence. Whether an answer invents places or facts needs judgement, so a different model (Sonnet 5.5) grades it from per-claim verdicts, checked by known-negative tests. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |
 | **uv and pnpm** | Fast, lockfile-first package managers with reproducible installs. |
