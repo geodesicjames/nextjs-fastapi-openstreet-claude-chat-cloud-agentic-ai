@@ -1,0 +1,7 @@
+# Copy to backend.hcl (gitignored) after the first apply, then run:
+#   terraform init -migrate-state -backend-config=backend.hcl
+bucket       = "places-tfstate-<account id>" # the state_bucket output
+key          = "bootstrap/terraform.tfstate"
+region       = "eu-west-2"
+use_lockfile = true # S3-native state locking
+encrypt      = true
