@@ -46,3 +46,11 @@ Thumbs.db
 
 # Database dumps from scripts/backup-db.sh
 /backups/
+
+# Terraform: state and plans can contain sensitive values; tfvars/backend.hcl hold your settings.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+infra/**/terraform.tfvars
+infra/**/backend.hcl

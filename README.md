@@ -61,6 +61,7 @@ frontend/
 docker-compose.yml       development stack (source mounted, auto-reload)
 docker-compose.prod.yml  production stack (see "Production stack")
 scripts/backup-db.sh     database backup (pg_dump, optional upload to S3)
+infra/                   Terraform for AWS (see infra/README.md)
 ```
 
 ## Local setup
@@ -274,6 +275,10 @@ non-root user with a single uvicorn worker and no reload, and writes JSON logs. 
 Next.js `standalone` server running as the `node` user. Only the frontend publishes a port.
 Migrations are an explicit step. Settings come from `ENV_FILE` (`.env` by default). CI builds both
 production images on every PR.
+
+Deploying to AWS is set up in `infra/` (Terraform). `infra/README.md` walks through account
+security, SSO sign-in for the CLI, the one-time bootstrap, and the GitHub `production`
+environment.
 
 ### Git hooks (once per clone)
 
