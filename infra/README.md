@@ -96,7 +96,7 @@ environment.
 2. **Required reviewers:** add yourself, so every deploy waits for your approval.
 3. **Deployment branches:** *Selected branches* → `main`.
 4. **Environment variables →** `AWS_DEPLOY_ROLE_ARN` = the `deploy_role_arn` output, and
-   `AWS_REGION` = `eu-west-2`.
+   `AWS_REGION` = `eu-west-2`. Two more come from the app stack in step 7.
 
 The role ARN isn't a secret, but keeping it on the environment ties it to the approval gate.
 
@@ -145,14 +145,49 @@ Then:
    then run `aws ssm start-session --target <instance_id>` and
    `sudo tail /var/log/app-setup.log`. It should end with `setup finished`.
 
-The URL shows a CloudFront error page until the first deploy (next PR), because nothing is running
+The URL shows a CloudFront error page until the first deploy (step 7), because nothing is running
 on the server yet.
 
 **SES sandbox:** new accounts can only send to verified addresses. Verify the addresses you'll sign
 in with (SES console → Identities), or request production access (SES console → Account
 dashboard), which takes about a day.
 
-### Monthly cost (eu-west-2, on-demand, approximate)
+## 7. Deploy
+
+`.github/workflows/deploy.yml` deploys every commit that reaches `main`, once CI has passed on it,
+and waits for your approval first (the `production` environment's required reviewer). Each deploy
+runs these steps:
+
+1. Builds the production images and pushes them to ECR, tagged with the commit SHA.
+2. Sends the server an SSM Run Command, which runs `scripts/deploy-on-server.sh`. That script:
+   - writes the env file from `/places/prod/*` (readable by root only)
+   - pulls the images
+   - runs migrations
+   - runs `up -d --wait`, which waits until every service is healthy
+3. Checks `/api/health` through CloudFront.
+
+Set two more variables on the GitHub `production` environment, from `terraform output` in
+`infra/app`: `APP_INSTANCE_ID` = `instance_id`, and `APP_URL` = `url`.
+
+**First deploy:** GitHub → **Actions → Deploy → Run workflow**, then approve it. The job log
+includes the server's output. When it's green, make yourself an admin. It creates your user if
+needed and gives you chat access:
+
+```bash
+aws ssm start-session --target <instance_id>
+sudo -i
+cd /srv/places/app
+docker compose -f docker-compose.prod.yml --env-file .env exec backend python -m app.cli make-admin you@example.com
+```
+
+Then sign in at the app URL. While SES is in the sandbox, the address must be verified in SES
+(step 6).
+
+**Roll back:** run the Deploy workflow by hand with an earlier commit SHA from `main`. Its images
+are already in ECR (the last 10 are kept), so nothing is rebuilt. Migrations don't run backwards:
+if a release changed the schema, check that the older code still works with it.
+
+## Monthly cost (eu-west-2, on-demand, approximate)
 
 | item | ~USD/month |
 | --- | --- |
@@ -167,7 +202,7 @@ Figures are from AWS's public price list; check them with the
 [AWS Pricing Calculator](https://calculator.aws/). The bootstrap's budget alarm emails you before
 $25.
 
-### Known limitations
+## Known limitations
 
 - **CloudFront → server is plain HTTP.** Without a domain of our own, the server can't present a
   certificate CloudFront will accept. So the hop from CloudFront's edge to port 3000 is

@@ -57,11 +57,13 @@ frontend/
   app/api/         route handlers the map and chat call from the browser (proxy to FastAPI)
   lib/chat.ts      chat types and the streamed-reply (SSE) reader
   lib/markdown.tsx tiny Markdown renderer for chat replies (React elements only)
+  app/api/health/  overall health, checked through CloudFront after each deploy
   proxy.ts         refuses requests that didn't come through CloudFront (production)
   scripts/         copy-maplibre-worker.mjs (see Decisions)
 docker-compose.yml       development stack (source mounted, auto-reload)
 docker-compose.prod.yml  production stack (see "Production stack")
 scripts/backup-db.sh     database backup (pg_dump, optional upload to S3)
+scripts/deploy-on-server.sh  run on the server by the deploy workflow (pull, migrate, start)
 infra/bootstrap/         Terraform: state bucket, GitHub OIDC deploy role, budget
 infra/app/               Terraform: network, server, CloudFront, ECR, backups, SES, settings
 ```
@@ -285,6 +287,13 @@ known limitations. In production the frontend serves only requests carrying Clou
 `X-Origin-Verify` header (`frontend/proxy.ts`); locally, with `ORIGIN_VERIFY_SECRET` unset, it serves
 everything.
 
+**Deploys** (`.github/workflows/deploy.yml`) run after CI passes on `main`, once you approve
+them. The workflow builds both images and pushes them to ECR, tagged with the commit. It then tells
+the server, through SSM Run Command, to run `scripts/deploy-on-server.sh`. That script writes the
+env file from Parameter Store, pulls, migrates, starts, and waits for every health check. Last,
+the workflow checks `/api/health` through CloudFront. To roll back, run the workflow by hand with
+an earlier commit.
+
 ### Git hooks (once per clone)
 
 ```bash
@@ -376,6 +385,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **CloudFront reaches the server over a firewalled public address** | CloudFront *VPC origins* would keep the server private, but a private server needs a NAT to reach Anthropic and OpenStreetMap, and a managed NAT gateway costs about $37 a month. Instead the server has a public address whose firewall admits only CloudFront's origin-facing ranges. Because those ranges are shared by all CloudFront customers, the app also requires a secret header that only our distribution adds (`frontend/proxy.ts`). The CloudFront-to-server hop is plain HTTP; see `infra/README.md`, "Known limitations". |
 | **x86 (t3a.small), not ARM (t4g.small)** | The official PostGIS image has no ARM build. x86 costs about $1.50 a month more, but every image runs as-is and CI builds without emulation. |
 | **The database on its own EBS volume** | The server is disposable (rebuilt from Terraform and the deploy); the data volume is protected from `terraform destroy` and survives replacing the instance. Nightly dumps to S3 cover losing the volume itself. |
+| **Deploys through SSM Run Command, not SSH** | No port 22, no SSH keys to store or rotate. GitHub gets short-lived AWS credentials through OIDC, which are only issued to jobs in the approved `production` environment, and the command runs as an audited SSM invocation. The command carries the compose file and deploy script with it, so the server never needs access to the repository. |
+| **Images tagged with the commit, immutable** | A tag always means the same code, so a redeploy or rollback reuses the image already in ECR instead of rebuilding something slightly different. |
 | **Dev and prod stages in one Dockerfile** | Shared base image and dependency layers. `dev` bind-mounts the source with reload; `prod` copies only what runs, with no dev dependencies, as a non-root user. |
 | **Migrations as a deploy step, not on startup** | Running `alembic upgrade` when a container starts races if two start at once, and hides a failed migration behind a crash loop. In production it's a one-off `migrate` service the deploy runs first. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |

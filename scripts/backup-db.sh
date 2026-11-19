@@ -11,8 +11,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 COMPOSE=(docker compose -f docker-compose.prod.yml)
+set -a
 # shellcheck disable=SC1090
-set -a; source "${ENV_FILE:-.env}"; set +a
+source "${ENV_FILE:-.env}"
+set +a
 
 mkdir -p backups
 file="backups/places-$(date -u +%Y%m%dT%H%M%SZ).dump"
