@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs/config";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -17,4 +18,12 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Sentry's build step wires its SDK into the server and browser bundles.
+// Source maps aren't uploaded (that would need a Sentry auth token in CI), so
+// browser stack traces show the minified code; server traces are readable.
+export default withSentryConfig(nextConfig, {
+  silent: true,
+  telemetry: false, // don't send Sentry's build plugin usage data
+  sourcemaps: { disable: true },
+  release: { create: false },
+});

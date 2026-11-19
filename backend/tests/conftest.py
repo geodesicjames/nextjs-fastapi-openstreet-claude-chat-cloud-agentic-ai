@@ -42,6 +42,8 @@ def _test_database_url() -> URL:
 # swapping in TEST_NAME.
 TEST_DATABASE_URL = _test_database_url()
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL.render_as_string(hide_password=False)
+# Never report test errors to Sentry, even if a developer's .env has a DSN.
+os.environ["SENTRY_DSN"] = ""
 get_settings.cache_clear()
 
 import pytest

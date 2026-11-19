@@ -26,6 +26,12 @@ CMD ["pnpm", "dev", "--hostname", "0.0.0.0"]
 
 # --- prod ---------------------------------------------------------------------------
 FROM deps AS build
+# Error reporting (Sentry). NEXT_PUBLIC_* values are written into the bundles
+# at build time, so they're build arguments; empty means Sentry stays off.
+ARG NEXT_PUBLIC_SENTRY_DSN=""
+ARG NEXT_PUBLIC_SENTRY_RELEASE=""
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN \
+    NEXT_PUBLIC_SENTRY_RELEASE=$NEXT_PUBLIC_SENTRY_RELEASE
 COPY . .
 # Also copies MapLibre's worker into public/vendor (see package.json).
 RUN pnpm build

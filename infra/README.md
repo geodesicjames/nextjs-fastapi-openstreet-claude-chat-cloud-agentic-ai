@@ -226,6 +226,44 @@ It finishes by printing user and place counts and the migration version. A dump 
 schema change restores the old schema, so deploy the matching commit afterwards (step 7, roll back)
 or redeploy the current one, which runs the newer migrations.
 
+## 9. Error reporting (Sentry)
+
+Optional; everything works without it. With it, errors from the backend, the Next.js server and
+browsers appear in Sentry, tagged with the deployed commit. No personal data is sent: no user
+identity, IP addresses, cookies, headers, request bodies, query strings or local variables
+(`backend/app/observability.py`, `frontend/lib/sentry-options.ts`).
+
+1. In sentry.io, create two projects: **FastAPI** (backend) and **Next.js** (frontend). Copy each
+   one's DSN (**Settings → Projects → project → Client Keys (DSN)**).
+2. In each project, under **Settings → Security & Privacy**, turn on **Prevent Storing of IP
+   Addresses**. The SDKs don't send IPs, but Sentry can otherwise infer one from the connection.
+3. **Backend DSN** goes in Parameter Store, read at runtime:
+
+   ```bash
+   aws ssm put-parameter --name /places/prod/SENTRY_DSN --type String --value '<FastAPI DSN>'
+   ```
+
+4. **Frontend DSN** is written into the JavaScript at build time, so it goes on the GitHub
+   `production` environment as the variable `SENTRY_DSN_FRONTEND`.
+5. Deploy (step 7). Both take effect with the next deploy.
+
+**Test it.** Backend, from an SSM session in `/srv/places/app`:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env exec backend python -c "
+import sentry_sdk
+from app.config import get_settings
+from app.observability import init_sentry
+init_sentry(get_settings()); sentry_sdk.capture_message('Sentry test from the server'); sentry_sdk.flush()"
+```
+
+Browser: open the app, then in the developer console run
+`setTimeout(() => { throw new Error("Sentry test from the browser") })`. Throwing directly in the
+console doesn't count; Sentry ignores errors from the console itself.
+
+Browser stack traces show minified code, because source maps aren't uploaded (that would need a
+Sentry auth token in CI). Backend and Next.js server traces are readable.
+
 ## Monthly cost (eu-west-2, on-demand, approximate)
 
 | item | ~USD/month |

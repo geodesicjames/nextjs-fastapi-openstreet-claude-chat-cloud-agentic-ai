@@ -41,6 +41,7 @@ backend/
     db.py          async engine + session factory
     deps.py        shared dependencies (DB session, current user, chat access)
     cli.py         management commands (`python -m app.cli make-admin ...`)
+    observability.py  Sentry error reporting (off without SENTRY_DSN; no personal data)
     security.py    random token generation and hashing
     models/        SQLAlchemy models
     schemas/       Pydantic request/response schemas
@@ -60,6 +61,7 @@ frontend/
   lib/markdown.tsx tiny Markdown renderer for chat replies (React elements only)
   app/api/health/  overall health, checked through CloudFront after each deploy
   proxy.ts         refuses requests that didn't come through CloudFront (production)
+  instrumentation*.ts, sentry.*.config.ts  Sentry setup (lib/sentry-options.ts holds the settings)
   scripts/         copy-maplibre-worker.mjs (see Decisions)
 docker-compose.yml       development stack (source mounted, auto-reload)
 docker-compose.prod.yml  production stack (see "Production stack")
@@ -400,6 +402,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Images tagged with the commit, immutable** | A tag always means the same code, so a redeploy or rollback reuses the image already in ECR instead of rebuilding something slightly different. |
 | **Scheduled jobs as systemd timers on the host** | Backups need the host's AWS CLI and the compose project, so a timer on the server is simpler than a scheduler container or a cloud service. `Persistent=true` catches up after downtime, `journalctl` keeps the output, and each deploy installs the units, so they're versioned with the code. |
 | **The cost chart is HTML and CSS, not a chart library** | One column chart doesn't justify a dependency. It's a Server Component, so the page ships no JavaScript of its own. Each column is focusable, with a CSS tooltip and an accessible name, and the same numbers are in a table. |
+| **Sentry for errors, with personal data off** | Errors arrive grouped, with stack traces and the release they came from, without anyone searching logs. Sentry's defaults would send user identity, IPs, cookies, headers, bodies, query strings, stack-frame variables and Claude prompts, so each of those is switched off explicitly and tested (a real event is captured and inspected). Query strings are also cut from URLs, because sign-in links carry their token there. It's off without a DSN, so development and tests send nothing. |
 | **Dev and prod stages in one Dockerfile** | Shared base image and dependency layers. `dev` bind-mounts the source with reload; `prod` copies only what runs, with no dev dependencies, as a non-root user. |
 | **Migrations as a deploy step, not on startup** | Running `alembic upgrade` when a container starts races if two start at once, and hides a failed migration behind a crash loop. In production it's a one-off `migrate` service the deploy runs first. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |

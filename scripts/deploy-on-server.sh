@@ -35,6 +35,8 @@ echo "wrote $(wc -l < "$ENV_FILE.new") settings: $(cut -d= -f1 "$ENV_FILE.new" |
 # Record the images too, so later commands on the server (docker compose
 # exec, backups) see the same configuration without extra variables.
 printf 'BACKEND_IMAGE=%s\nFRONTEND_IMAGE=%s\n' "$BACKEND_IMAGE" "$FRONTEND_IMAGE" >> "$ENV_FILE.new"
+# Sentry tags backend errors with the deployed commit (the image tag).
+printf 'SENTRY_RELEASE=%s\n' "${BACKEND_IMAGE##*:}" >> "$ENV_FILE.new"
 mv "$ENV_FILE.new" "$ENV_FILE"
 
 echo "--- registry login"
