@@ -77,6 +77,9 @@ logger = logging.getLogger(__name__)
 class CheckResult:
     ok: bool
     problems: list[str] = field(default_factory=list)
+    # What to store as the run's plan when ok: e.g. the proposal enriched with
+    # place names and times. None stores the finish tool's input as given.
+    plan: dict[str, Any] | None = None
 
 
 # (context, tool name, raw input) -> outcome. Must not raise for bad input.
@@ -402,7 +405,9 @@ async def advance(
                         StepKind.CHECK,
                         {"tool_use_id": tool_use_id, "ok": True, "problems": [], "result": None},
                     )
-                    plan = raw_input if isinstance(raw_input, dict) else None
+                    plan = verdict.plan
+                    if plan is None and isinstance(raw_input, dict):
+                        plan = raw_input
                     await _transition(
                         db, run, RunStatus.AWAITING_APPROVAL, (RunStatus.RUNNING,), plan=plan
                     )
