@@ -12,7 +12,7 @@ from functools import lru_cache
 from ipaddress import IPv4Network, IPv6Network
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, SecretStr, field_validator
+from pydantic import Field, PostgresDsn, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,6 +41,15 @@ class Settings(BaseSettings):
     login_link_max_per_hour: int = 5
     session_lifetime_days: int = 30
     session_cookie_name: str = "session"
+
+    # --- Email ------------------------------------------------------------------
+    # console: log emails (development). ses: send through Amazon SES, using
+    # the server's AWS credentials (its instance role).
+    email_backend: Literal["console", "ses"] = "console"
+    # Sender address; must be verified in SES. Required when email_backend=ses.
+    email_from: str = ""
+    # AWS region for SES. On the server it comes from Parameter Store.
+    aws_region: str | None = None
 
     # --- Chat access ----------------------------------------------------------
     # invite_only: chat needs an active ChatGrant. open: any signed-in user can
@@ -131,6 +140,12 @@ class Settings(BaseSettings):
                 f"(known: {', '.join(sorted(PRICES))})"
             )
         return value
+
+    @model_validator(mode="after")
+    def _ses_needs_sender(self) -> "Settings":
+        if self.email_backend == "ses" and not self.email_from:
+            raise ValueError("EMAIL_FROM is required when EMAIL_BACKEND=ses")
+        return self
 
     @property
     def user_agent(self) -> str:

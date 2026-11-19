@@ -107,6 +107,10 @@ sent. The link is printed to the backend log instead:
 2. Find the link: `docker compose logs backend | grep -A4 "sign-in link"`
 3. Open it and press **Sign in**.
 
+Which sender is used is set by `EMAIL_BACKEND`: `console` (the default, above) or `ses`, which
+sends through Amazon SES from `EMAIL_FROM` with the server's AWS credentials. Production uses
+`ses`; its settings come from Parameter Store (see `infra/README.md`).
+
 Links expire after 30 minutes and work once. Sessions last 30 days. Both
 values are settings in `backend/app/config.py`, overridable by environment
 variables (`LOGIN_LINK_LIFETIME_MINUTES`, `SESSION_LIFETIME_DAYS`).
@@ -367,6 +371,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Only replayable turns are saved** | A turn that ends on an unanswered or cut-off tool call (refusal, `max_tokens`, budget running out, API failure) would be rejected when replayed, so its messages are dropped. Every call's cost is still logged. |
 | **One reply at a time per conversation** | Sending locks the conversation row with `FOR UPDATE NOWAIT`. A double-submitted message gets "busy" rather than a second, interleaved reply. |
 | **`PATCH` sends only the fields that change** | The handler uses `model_dump(exclude_unset=True)`, so `{"daily_token_limit": null}` (go back to the default) differs from leaving the field out (keep it as it is). |
+| **SES through boto3 in a worker thread** | boto3 is the official AWS SDK but it blocks, so each send runs in `anyio.to_thread` rather than stalling the event loop. A whole async AWS SDK (aioboto3) would be a heavier dependency for one call per sign-in. Emails go out from background tasks, so a failed send is logged rather than surfacing to the user. |
 | **Approval email includes a `/login` fallback** | Sign-in links expire after 30 minutes, but an approval email may not be read for days. |
 | **One active grant per user, enforced by Postgres** | A partial unique index (`WHERE revoked_at IS NULL`) rather than an app-level check, so two simultaneous approvals can't both succeed. Revoked grants are kept as history. |
 | **Places cached by grid cell** | Panning around an area costs at most a few upstream queries, and each cell is fetched once for every category. Cells, rather than exact bboxes, make "have we fetched this?" a simple primary-key lookup. |

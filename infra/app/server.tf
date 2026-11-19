@@ -152,10 +152,16 @@ resource "aws_iam_role_policy" "app" {
         Resource = aws_s3_bucket.backups.arn
       },
       {
+        # Any identity in this account, because in the SES sandbox the
+        # (verified) recipient's identity is authorised too, but only ever
+        # sending from the app's address.
         Sid      = "SendSignInEmail"
         Effect   = "Allow"
         Action   = ["ses:SendEmail", "ses:SendRawEmail"]
-        Resource = aws_sesv2_email_identity.sender.arn
+        Resource = "arn:aws:ses:${var.region}:${local.account_id}:identity/*"
+        Condition = {
+          StringEquals = { "ses:FromAddress" = aws_sesv2_email_identity.sender.email_identity }
+        }
       },
     ]
   })
