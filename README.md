@@ -53,6 +53,7 @@ frontend/
   lib/api.ts       server-only API client (forwards the session cookie)
   lib/auth-actions.ts  Server Actions for sign-in and sign-out
   lib/access-actions.ts  Server Actions for requesting access and the admin page
+  app/admin/usage/ Claude spend page (chart in plain HTML/CSS, no chart library)
   app/map/         the map page (MapLibre GL, a Client Component)
   app/api/         route handlers the map and chat call from the browser (proxy to FastAPI)
   lib/chat.ts      chat types and the streamed-reply (SSE) reader
@@ -141,6 +142,9 @@ How someone gets access:
    limit, expiry and note, and emails them a sign-in link.
 3. On the same page, admins can edit a grant's limit, expiry or note, or revoke
    it. Changes take effect on the user's next request.
+4. **Claude spend** (http://localhost:3000/admin/usage, `GET /admin/usage?days=30`)
+   shows the estimated cost over the last 7, 30 or 90 days: totals, a chart of spend per UTC
+   day, and breakdowns by user and by model, from the `llm_usage` ledger.
 
 The site header shows each signed-in user how many chat tokens they have left
 today, or a "Request chat access" link if they have no grant. Admins also see
@@ -395,6 +399,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Deploys through SSM Run Command, not SSH** | No port 22, no SSH keys to store or rotate. GitHub gets short-lived AWS credentials through OIDC, which are only issued to jobs in the approved `production` environment, and the command runs as an audited SSM invocation. The command carries the compose file and deploy script with it, so the server never needs access to the repository. |
 | **Images tagged with the commit, immutable** | A tag always means the same code, so a redeploy or rollback reuses the image already in ECR instead of rebuilding something slightly different. |
 | **Scheduled jobs as systemd timers on the host** | Backups need the host's AWS CLI and the compose project, so a timer on the server is simpler than a scheduler container or a cloud service. `Persistent=true` catches up after downtime, `journalctl` keeps the output, and each deploy installs the units, so they're versioned with the code. |
+| **The cost chart is HTML and CSS, not a chart library** | One column chart doesn't justify a dependency. It's a Server Component, so the page ships no JavaScript of its own. Each column is focusable, with a CSS tooltip and an accessible name, and the same numbers are in a table. |
 | **Dev and prod stages in one Dockerfile** | Shared base image and dependency layers. `dev` bind-mounts the source with reload; `prod` copies only what runs, with no dev dependencies, as a non-root user. |
 | **Migrations as a deploy step, not on startup** | Running `alembic upgrade` when a container starts races if two start at once, and hides a failed migration behind a crash loop. In production it's a one-off `migrate` service the deploy runs first. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |

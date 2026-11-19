@@ -141,6 +141,31 @@ export function getActiveGrants(): Promise<Grant[] | null> {
   return getJson<Grant[]>("/admin/grants");
 }
 
+// Mirrors UsageReportOut in backend/app/schemas/usage.py.
+export type UsageTotals = {
+  cost_usd: number;
+  calls: number;
+  /** Uncached input + cache writes + cache reads. */
+  input_tokens: number;
+  /** Includes thinking. */
+  output_tokens: number;
+};
+
+export type UsageReport = {
+  start: string;
+  end: string;
+  total: UsageTotals;
+  /** Every UTC day in the period, oldest first, zeros included. */
+  by_day: (UsageTotals & { day: string })[];
+  by_user: (UsageTotals & { email: string })[];
+  by_model: (UsageTotals & { model: string })[];
+};
+
+/** Claude spend over the last `days` UTC days (admins only; null otherwise). */
+export function getUsageReport(days: number): Promise<UsageReport | null> {
+  return getJson<UsageReport>(`/admin/usage?days=${days}`);
+}
+
 // --- Proxy for browser-side calls ----------------------------------------------------
 
 /**
