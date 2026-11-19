@@ -148,9 +148,17 @@ Then:
 The URL shows a CloudFront error page until the first deploy (step 7), because nothing is running
 on the server yet.
 
-**SES sandbox:** new accounts can only send to verified addresses. Verify the addresses you'll sign
-in with (SES console → Identities), or request production access (SES console → Account
-dashboard), which takes about a day.
+**SES sandbox:** new SES accounts can only send *to* verified addresses, at most 200 emails a
+day. That's fine for an invite-only demo: verify each address that will sign in (SES console →
+**Identities → Create identity → Email address**; the person clicks the link AWS sends).
+
+To email anyone, leave the sandbox: SES console → **Account dashboard → Request production
+access**. Describe the use honestly: transactional sign-in links only, sent to people who asked
+for them, no marketing, low volume, and bounces handled by not retrying. AWS usually answers within
+a day, sometimes with questions.
+
+If sign-in emails don't arrive, the backend logs say why, without the recipient's address:
+`docker compose -f docker-compose.prod.yml --env-file .env logs backend | grep "SES"`.
 
 ## 7. Deploy
 

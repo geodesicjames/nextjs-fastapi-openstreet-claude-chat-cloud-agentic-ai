@@ -28,6 +28,7 @@ locals {
     PGDATA_DIR = "${local.data_dir}/pgdata"
     # Where scripts/backup-db.sh uploads dumps.
     BACKUP_S3_URI = "s3://${aws_s3_bucket.backups.bucket}/db"
+    EMAIL_BACKEND = "ses"
     EMAIL_FROM    = var.sender_email
     AWS_REGION    = var.region
   }
