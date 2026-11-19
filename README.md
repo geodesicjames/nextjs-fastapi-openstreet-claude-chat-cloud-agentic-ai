@@ -47,6 +47,7 @@ backend/
     schemas/       Pydantic request/response schemas
     routers/       API endpoints (APIRouter)
     services/      business logic
+      agent.py     the hand-written agent loop (plan, act, check, revise) and its guardrails
   alembic/         database migrations
   tests/
 frontend/
@@ -375,6 +376,10 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Claude behind a small `ChatModel` interface** | The chat service never imports the SDK. `AnthropicChatModel` streams through `AsyncAnthropic`, and tests use a scripted fake, so the whole flow is tested without network calls or API cost. |
 | **Chat history stored exactly as sent** | Each message's API content blocks are stored as JSONB and replayed unchanged, including thinking blocks, whose text is empty but whose signature must be kept. History is append-only: editing earlier turns would invalidate replayed thinking and the prompt cache. A failed call saves nothing, so history never has a question without its answer. |
 | **A hand-written tool loop** | Calling the model, running the tools it asks for, and calling it again is a short loop in `app/services/chat.py`, not the SDK's tool runner. Owning it is what allows a budget check before every call, a cap on tool steps, SSE events for each tool, and saving the turn only when it can be replayed. |
+| **A hand-written agent loop, not a framework** | The trip planner's loop (`app/services/agent.py`) is one readable module: call the model, run the tools it asks for, check its proposal in code, feed problems back, pause for a person's approval. Every guardrail (model calls, cost and time per run, the daily budget) is an `if` before a model call, and it's all tested with a scripted fake model. A framework would hide exactly the parts worth showing. |
+| **Agent proposals checked by code, not another model** | A proposal (the finish tool's input) passes only if a deterministic check says so; its problems go back to the model as the tool's result, and the model revises. Code checks are free, repeatable and can't be talked round, and the same check grades the evals. |
+| **Agent state is its steps** | Every model call, tool call, check and piece of feedback is saved as an `agent_steps` row the moment it happens, and the conversation is rebuilt from them before each call. So the trace an admin reads is the run's actual state, and a run interrupted by a restart carries on from its last step (its heartbeat goes stale, and the next worker claims it). Each step stores the exact text sent to the model, so replays are byte-identical. |
+| **Run status changes are conditional updates** | `UPDATE ... WHERE status IN (...)`, so two workers can't both claim a run and a cancel always wins: the loop finds out at its next heartbeat. No locks are held while waiting on the model. |
 | **Strict tool schemas instead of eager input streaming** | Tool inputs here are tiny (coordinates, a place name), so streaming them early gains nothing. `strict: true` makes the API guarantee inputs match the schema. Bounds that strict schemas can't express (radius 50–2000 m, note length) are enforced by Pydantic, and an out-of-range value goes back to Claude as an error it can correct. |
 | **Only replayable turns are saved** | A turn that ends on an unanswered or cut-off tool call (refusal, `max_tokens`, budget running out, API failure) would be rejected when replayed, so its messages are dropped. Every call's cost is still logged. |
 | **One reply at a time per conversation** | Sending locks the conversation row with `FOR UPDATE NOWAIT`. A double-submitted message gets "busy" rather than a second, interleaved reply. |

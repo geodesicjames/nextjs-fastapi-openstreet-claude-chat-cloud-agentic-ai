@@ -84,6 +84,10 @@ class LlmUsage(TimestampMixin, Base):
     conversation_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("conversations.id", ondelete="SET NULL")
     )
+    # Set for calls made by an agent run instead of a chat conversation.
+    agent_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("agent_runs.id", ondelete="SET NULL")
+    )
     model: Mapped[str] = mapped_column(String(100))
     input_tokens: Mapped[int]  # uncached input
     output_tokens: Mapped[int]  # includes thinking
