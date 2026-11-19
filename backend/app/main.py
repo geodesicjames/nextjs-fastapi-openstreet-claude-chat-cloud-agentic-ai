@@ -7,6 +7,7 @@ here we wire routers and middleware explicitly in code.
 Run locally with:  uv run fastapi dev app/main.py
 """
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -15,9 +16,21 @@ import httpx
 from fastapi import FastAPI
 
 from app.config import get_settings
+from app.deps import chat_model_for
 from app.observability import init_sentry
 from app.ratelimit import RateLimiter
-from app.routers import access_requests, admin, auth, chat, geocode, health, places, saved_places
+from app.routers import (
+    access_requests,
+    admin,
+    agent,
+    auth,
+    chat,
+    geocode,
+    health,
+    places,
+    saved_places,
+)
+from app.services.agent_worker import AgentWorker
 from app.services.geocoding import NominatimClient
 from app.services.overpass import OverpassClient
 
@@ -36,7 +49,11 @@ def create_app() -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # Picks up queued runs and runs interrupted by a restart.
+        sweeper = asyncio.create_task(app.state.agent_worker.run_sweeper())
         yield
+        sweeper.cancel()
+        await app.state.agent_worker.stop()
         await http.aclose()
         if app.state.anthropic is not None:
             await app.state.anthropic.close()
@@ -52,6 +69,8 @@ def create_app() -> FastAPI:
     # The Anthropic client is created on first use (app/deps.py), so the app
     # starts without an API key; chat then answers 503 until one is set.
     app.state.anthropic = None
+    # Drives agent runs in the background (app/services/agent_worker.py).
+    app.state.agent_worker = AgentWorker(app, chat_model_for)
 
     # No CORS middleware: browsers never call this API directly. They talk
     # only to Next.js, which calls FastAPI server-side and forwards the
@@ -60,6 +79,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(auth.router)
     app.include_router(chat.router)
+    app.include_router(agent.router)
     app.include_router(access_requests.router)
     app.include_router(admin.router)
     app.include_router(places.router)

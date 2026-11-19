@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 import anthropic
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings, get_settings
@@ -118,20 +118,30 @@ ChatAccess = Annotated[ChatStatus, Depends(require_chat_access)]
 StreamingDbSession = Annotated[AsyncSession, Depends(get_db, scope="request")]
 
 
+def chat_model_for(app: FastAPI, settings: Settings) -> ChatModel | None:
+    """The Claude client, created once per app on first use; None without a key.
+
+    Also used outside requests, by the agent worker.
+    """
+    if app.state.anthropic is None:
+        if settings.anthropic_api_key is None:
+            return None
+        app.state.anthropic = anthropic.AsyncAnthropic(
+            api_key=settings.anthropic_api_key.get_secret_value()
+        )
+    return AnthropicChatModel(app.state.anthropic)
+
+
 def get_chat_model(
     request: Request, settings: Annotated[Settings, Depends(get_settings)]
 ) -> ChatModel:
-    """The Claude client, created once per app on first use.
+    """The Claude client. 503 if ANTHROPIC_API_KEY isn't configured.
 
-    503 if ANTHROPIC_API_KEY isn't configured. Tests override this
-    dependency with a scripted fake.
+    Tests override this dependency with a scripted fake.
     """
-    if request.app.state.anthropic is None:
-        if settings.anthropic_api_key is None:
-            raise HTTPException(
-                status.HTTP_503_SERVICE_UNAVAILABLE, "Chat isn't configured on this server."
-            )
-        request.app.state.anthropic = anthropic.AsyncAnthropic(
-            api_key=settings.anthropic_api_key.get_secret_value()
+    model = chat_model_for(request.app, settings)
+    if model is None:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE, "Chat isn't configured on this server."
         )
-    return AnthropicChatModel(request.app.state.anthropic)
+    return model
