@@ -1,4 +1,4 @@
-"""Admin endpoints: review access requests and manage chat grants.
+"""Admin endpoints: review access requests, manage chat grants, see Claude spend.
 
 Every route depends on `AdminUser` (401 if signed out, 403 if not an admin).
 """
@@ -7,16 +7,18 @@ import uuid
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 
 from app.config import Settings, get_settings
 from app.deps import AdminUser, DbSession
 from app.models import AccessRequest, AccessRequestStatus, ChatGrant
 from app.schemas.access import AccessRequestOut, ApproveIn, GrantOut, GrantUpdate
+from app.schemas.usage import UsageReportOut
 from app.services import access_requests as service
 from app.services import auth as auth_service
 from app.services.chat_access import GrantConflictError
 from app.services.email import EmailSender, get_email_sender
+from app.services.usage_report import usage_report
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -174,3 +176,14 @@ async def revoke_grant(
     grant = await _grant_or_404(db, grant_id)
     await service.revoke_grant(db, grant)
     return await _grant_out_with_usage(db, grant, settings)
+
+
+@router.get("/usage", response_model=UsageReportOut)
+async def get_usage(
+    db: DbSession,
+    admin: AdminUser,
+    days: Annotated[int, Query(ge=1, le=366)] = 30,
+) -> UsageReportOut:
+    """Claude spend for the last `days` UTC days (today included): totals, per
+    day (every day, zeros included), per user and per model."""
+    return UsageReportOut.from_report(await usage_report(db, days))
