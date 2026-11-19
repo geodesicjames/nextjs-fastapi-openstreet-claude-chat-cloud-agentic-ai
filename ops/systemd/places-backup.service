@@ -1,0 +1,15 @@
+# Nightly database backup to S3 (scripts/backup-db.sh).
+# Installed by scripts/deploy-on-server.sh; started by places-backup.timer.
+# Logs: journalctl -u places-backup
+[Unit]
+Description=Places: back up the database to S3
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/places/app
+# /snap/bin: where Ubuntu's AWS CLI lives (not on systemd's default PATH).
+Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/snap/bin
+Environment=ENV_FILE=/srv/places/app/.env
+ExecStart=/bin/bash /srv/places/app/scripts/backup-db.sh

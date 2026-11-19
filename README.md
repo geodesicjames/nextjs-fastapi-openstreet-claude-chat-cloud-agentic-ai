@@ -62,7 +62,9 @@ frontend/
   scripts/         copy-maplibre-worker.mjs (see Decisions)
 docker-compose.yml       development stack (source mounted, auto-reload)
 docker-compose.prod.yml  production stack (see "Production stack")
-scripts/backup-db.sh     database backup (pg_dump, optional upload to S3)
+scripts/backup-db.sh     database backup (pg_dump, checked, optional upload to S3)
+scripts/restore-db.sh    restore a dump (local file or S3), all-or-nothing
+ops/systemd/             nightly backup and daily cleanup timers, installed by each deploy
 scripts/deploy-on-server.sh  run on the server by the deploy workflow (pull, migrate, start)
 infra/bootstrap/         Terraform: state bucket, GitHub OIDC deploy role, budget
 infra/app/               Terraform: network, server, CloudFront, ECR, backups, SES, settings
@@ -275,7 +277,7 @@ skill's `build-report-lite.mjs`.
 docker compose -f docker-compose.prod.yml build
 docker compose -f docker-compose.prod.yml run --rm migrate   # apply migrations
 FRONTEND_PORT=3100 docker compose -f docker-compose.prod.yml up -d
-scripts/backup-db.sh                                         # pg_dump; restore steps inside
+scripts/backup-db.sh                                         # pg_dump (scripts/restore-db.sh restores)
 ```
 
 It uses the `prod` stages of the Dockerfiles. The backend has no dev dependencies, runs as a
@@ -392,6 +394,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **The database on its own EBS volume** | The server is disposable (rebuilt from Terraform and the deploy); the data volume is protected from `terraform destroy` and survives replacing the instance. Nightly dumps to S3 cover losing the volume itself. |
 | **Deploys through SSM Run Command, not SSH** | No port 22, no SSH keys to store or rotate. GitHub gets short-lived AWS credentials through OIDC, which are only issued to jobs in the approved `production` environment, and the command runs as an audited SSM invocation. The command carries the compose file and deploy script with it, so the server never needs access to the repository. |
 | **Images tagged with the commit, immutable** | A tag always means the same code, so a redeploy or rollback reuses the image already in ECR instead of rebuilding something slightly different. |
+| **Scheduled jobs as systemd timers on the host** | Backups need the host's AWS CLI and the compose project, so a timer on the server is simpler than a scheduler container or a cloud service. `Persistent=true` catches up after downtime, `journalctl` keeps the output, and each deploy installs the units, so they're versioned with the code. |
 | **Dev and prod stages in one Dockerfile** | Shared base image and dependency layers. `dev` bind-mounts the source with reload; `prod` copies only what runs, with no dev dependencies, as a non-root user. |
 | **Migrations as a deploy step, not on startup** | Running `alembic upgrade` when a container starts races if two start at once, and hides a failed migration behind a crash loop. In production it's a one-off `migrate` service the deploy runs first. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |

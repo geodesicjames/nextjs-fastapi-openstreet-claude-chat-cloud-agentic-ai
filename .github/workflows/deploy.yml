@@ -117,7 +117,8 @@ jobs:
         run: |
           # Ship the files the server needs with the command itself, so the
           # server never needs access to this repository.
-          bundle=$(tar -cz docker-compose.prod.yml scripts/deploy-on-server.sh scripts/backup-db.sh | base64 -w0)
+          bundle=$(tar -cz docker-compose.prod.yml scripts/deploy-on-server.sh scripts/backup-db.sh \
+            scripts/restore-db.sh ops/systemd | base64 -w0)
           app_dir="/srv/$PROJECT/app"
           jq -n --arg bundle "$bundle" --arg dir "$app_dir" \
                 --arg backend "$BACKEND_IMAGE" --arg frontend "$FRONTEND_IMAGE" --arg region "$AWS_REGION" '{

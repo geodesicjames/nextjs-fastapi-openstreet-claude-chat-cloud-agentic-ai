@@ -195,6 +195,37 @@ Then sign in at the app URL. While SES is in the sandbox, the address must be ve
 are already in ECR (the last 10 are kept), so nothing is rebuilt. Migrations don't run backwards:
 if a release changed the schema, check that the older code still works with it.
 
+## 8. Backups, restore and cleanup
+
+Every deploy installs two systemd timers on the server (`ops/systemd/`):
+
+| timer | when (UTC) | what |
+| --- | --- | --- |
+| `places-backup` | 03:15 nightly | `scripts/backup-db.sh`: pg_dump, check that pg_restore can read it, upload to the backups bucket (kept 30 days), keep 7 days on the server |
+| `places-cleanup` | 04:00 daily | `python -m app.cli cleanup`: delete old login tokens and expired sessions |
+
+If the server was off at that time, the job runs when it's back. Check on them from an SSM session:
+
+```bash
+systemctl list-timers 'places-*'
+journalctl -u places-backup -n 20          # last run's output
+sudo systemctl start places-backup         # run a backup now
+aws s3 ls s3://<backups_bucket>/db/        # what's in S3
+```
+
+**Restore** replaces the whole database with a dump. The backend and frontend stop for the
+duration, and the restore is all-or-nothing: if it fails, the old data stays.
+
+```bash
+sudo -i
+cd /srv/places/app
+scripts/restore-db.sh s3://<backups_bucket>/db/places-<time>.dump --yes
+```
+
+It finishes by printing user and place counts and the migration version. A dump from before a
+schema change restores the old schema, so deploy the matching commit afterwards (step 7, roll back)
+or redeploy the current one, which runs the newer migrations.
+
 ## Monthly cost (eu-west-2, on-demand, approximate)
 
 | item | ~USD/month |

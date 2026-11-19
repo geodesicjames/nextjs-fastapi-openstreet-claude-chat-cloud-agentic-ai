@@ -1,19 +1,23 @@
 #!/usr/bin/env bash
 # Runs ON the app server, as root, via SSM Run Command (see
 # .github/workflows/deploy.yml). The workflow first copies this script,
-# docker-compose.prod.yml and backup-db.sh into APP_DIR.
+# docker-compose.prod.yml, the backup/restore scripts and ops/systemd/ into
+# APP_DIR.
 #
 #   BACKEND_IMAGE=<ecr>/places-backend:<sha> FRONTEND_IMAGE=<ecr>/places-frontend:<sha> \
 #     scripts/deploy-on-server.sh
 #
 # Steps: write the env file from SSM Parameter Store, log in to ECR, pull,
-# migrate, start, wait until every service is healthy, prune old images.
+# migrate, start, wait until every service is healthy, install the nightly
+# backup and cleanup timers, prune old images.
 set -euo pipefail
 
 : "${BACKEND_IMAGE:?}" "${FRONTEND_IMAGE:?}"
 APP_DIR="${APP_DIR:-/srv/places/app}"
 SSM_PREFIX="${SSM_PREFIX:-/places/prod/}"
 ENV_FILE="$APP_DIR/.env"
+# Ubuntu installs the AWS CLI as a snap; SSM's environment may not include it.
+export PATH="$PATH:/snap/bin"
 export AWS_REGION="${AWS_REGION:-$(cloud-init query region 2>/dev/null || echo eu-west-2)}"
 
 cd "$APP_DIR"
@@ -50,6 +54,12 @@ echo "--- start"
 # Recreates only the containers whose image or settings changed, then waits
 # for their health checks.
 "${compose[@]}" up -d --remove-orphans --wait --wait-timeout 180
+
+echo "--- scheduled jobs"
+install -m 0644 ops/systemd/*.service ops/systemd/*.timer /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now places-backup.timer places-cleanup.timer
+systemctl list-timers 'places-*' --no-pager
 
 echo "--- tidy"
 docker image prune -af --filter "until=168h" > /dev/null
