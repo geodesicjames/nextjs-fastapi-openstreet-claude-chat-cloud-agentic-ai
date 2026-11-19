@@ -115,6 +115,19 @@ jobs:
       - name: Build frontend (prod stage)
         run: docker build --target prod -t places-frontend:ci frontend
 
+      # frontend/proxy.ts: with ORIGIN_VERIFY_SECRET set, only requests that
+      # carry it (i.e. came through CloudFront) are served.
+      - name: Frontend refuses requests without the origin secret
+        run: |
+          docker run -d --name web -e ORIGIN_VERIFY_SECRET=ci-secret -p 3000:3000 places-frontend:ci
+          timeout 60 bash -c 'until curl -s -o /dev/null localhost:3000; do sleep 1; done'
+          without=$(curl -s -o /dev/null -w '%{http_code}' localhost:3000/)
+          wrong=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-origin-verify: nope' localhost:3000/)
+          with=$(curl -s -o /dev/null -w '%{http_code}' -H 'x-origin-verify: ci-secret' localhost:3000/)
+          echo "without=$without wrong=$wrong with=$with"
+          docker rm -f web
+          [ "$without" = 403 ] && [ "$wrong" = 403 ] && [ "$with" = 200 ]
+
       - name: Validate docker-compose.prod.yml
         env:
           ENV_FILE: .env.example

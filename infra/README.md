@@ -6,7 +6,7 @@ README, "Decisions"). Terraform describes the AWS side in two stacks:
 | stack | what | applied by |
 | --- | --- | --- |
 | `bootstrap/` | Terraform state bucket, GitHub OIDC provider, deploy role, cost budget | you, once |
-| `app/` (next PR) | network, EC2, CloudFront, ECR, backups, SES, parameters | you, when it changes |
+| `app/` | network, EC2, CloudFront, ECR, backups bucket, SES identity, settings | you, when it changes |
 
 Nobody stores long-lived AWS keys. You sign in with SSO, and GitHub Actions gets short-lived
 credentials through OIDC. Claude (or any other helper) never needs your credentials: you run every
@@ -29,6 +29,11 @@ This gives you short-lived CLI credentials instead of access keys that never exp
    creates an organization containing just your account, which is free.
 2. **Users → Add user:** your name and email. Accept the invite email, set a password, and register
    an **MFA device** when prompted.
+
+   If the invite email or its link doesn't work, skip it: select the user → **Reset password →
+   Generate a one-time password**. Then, in a private browser window, open the **access portal URL**
+   (step 5, not the normal console sign-in page), sign in with the user's **username** and that
+   password, and you'll be asked to set a new password and register MFA.
 3. **Permission sets → Create:** predefined **AdministratorAccess**, with a session duration of
    4 hours.
 4. **AWS accounts →** select your account → **Assign users or groups** → your user, with
@@ -94,3 +99,84 @@ environment.
    `AWS_REGION` = `eu-west-2`.
 
 The role ARN isn't a secret, but keeping it on the environment ties it to the approval gate.
+
+## 6. Apply the app stack
+
+What it creates (about 40 resources; each file in `app/` starts with a comment explaining its part):
+
+- **Network** (`network.tf`): a VPC with one public subnet. The server's firewall admits only
+  CloudFront, on port 3000. There is no SSH.
+- **Server** (`server.tf`, `user-data.sh`): a t3a.small running Ubuntu 24.04, with a fixed public
+  address (Elastic IP) and a separate encrypted **data volume** for the database. That volume is
+  protected from `terraform destroy`. On first boot the server installs Docker and the AWS CLI.
+  Its IAM role may pull the app's images, read `/places/prod/*` settings, write backups and send
+  email from the verified address.
+- **CloudFront** (`cdn.tf`): HTTPS on a `*.cloudfront.net` URL. Nothing is cached except Next.js's
+  hashed `/_next/static` files.
+- **ECR** (`registry.tf`): `places-backend` and `places-frontend`, keeping the last 10 images.
+- **Backups bucket** (`storage.tf`): private and encrypted; dumps expire after 30 days.
+- **Settings** (`config.tf`): SSM Parameter Store values under `/places/prod/`, including a
+  generated database password and the CloudFront origin secret. **SES** sender identity.
+
+```bash
+cd infra/app
+cp terraform.tfvars.example terraform.tfvars   # sender_email, osm_contact (gitignored)
+cp backend.hcl.example backend.hcl             # bucket = the bootstrap's state_bucket output
+terraform init -backend-config=backend.hcl
+terraform plan                                 # read it before applying
+terraform apply                                # CloudFront takes a few minutes
+terraform output                               # the URL, instance ID, ECR repositories
+```
+
+Then:
+
+1. **Verify the sender address:** SES emails `sender_email` a link; click it.
+2. **Add the Anthropic API key.** Terraform deliberately doesn't manage it, so it never lands in
+   Terraform state. `read -s` keeps it off your screen and out of shell history:
+
+   ```bash
+   read -rsp "Anthropic API key: " KEY && echo && \
+     aws ssm put-parameter --name /places/prod/ANTHROPIC_API_KEY --type SecureString --value "$KEY" && \
+     unset KEY
+   ```
+
+3. **Check the server** (optional). Install the
+   [Session Manager plugin](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html),
+   then run `aws ssm start-session --target <instance_id>` and
+   `sudo tail /var/log/app-setup.log`. It should end with `setup finished`.
+
+The URL shows a CloudFront error page until the first deploy (next PR), because nothing is running
+on the server yet.
+
+**SES sandbox:** new accounts can only send to verified addresses. Verify the addresses you'll sign
+in with (SES console → Identities), or request production access (SES console → Account
+dashboard), which takes about a day.
+
+### Monthly cost (eu-west-2, on-demand, approximate)
+
+| item | ~USD/month |
+| --- | --- |
+| t3a.small, standard CPU credits (no burst surcharges) | 15.50 |
+| public IPv4 address (Elastic IP) | 3.65 |
+| EBS gp3: 16 GB root + 8 GB data | 2.25 |
+| CloudFront (always-free tier: 1 TB and 10M requests a month) | 0 |
+| ECR images, S3 backups and state, SSM standard parameters | < 0.50 |
+| **total** | **about 22** |
+
+Figures are from AWS's public price list; check them with the
+[AWS Pricing Calculator](https://calculator.aws/). The bootstrap's budget alarm emails you before
+$25.
+
+### Known limitations
+
+- **CloudFront → server is plain HTTP.** Without a domain of our own, the server can't present a
+  certificate CloudFront will accept. So the hop from CloudFront's edge to port 3000 is
+  unencrypted, over the internet. It is fenced in two ways. The firewall only admits CloudFront's
+  published origin-facing addresses, and every request must carry a secret `X-Origin-Verify`
+  header that only our distribution adds (checked in `frontend/proxy.ts`). The alternatives cost
+  more: a domain plus a certificate on the server, or CloudFront VPC origins with a NAT
+  (see the root README, "Decisions").
+- **One server, one Availability Zone.** If it fails, the app is down until it's replaced. The
+  data volume and nightly S3 backups mean nothing is lost beyond the last backup.
+- **CloudFront's default certificate** accepts older TLS versions for browsers. A custom domain
+  would let us require TLS 1.2+.

@@ -26,9 +26,11 @@ Theme: TBD (e.g. dog-friendly hikes, bike routes) — keep naming generic until 
   pytest + httpx AsyncClient. pnpm, ESLint, Prettier for the frontend;
   Playwright for e2e later.
 - **CI:** GitHub Actions — lint, type check, tests on every PR.
-- **Cloud:** AWS. A single EC2 instance (t4g.small) running `docker-compose.prod.yml` behind
-  CloudFront, Postgres+PostGIS in a container with nightly backups to S3, Terraform, GitHub
-  OIDC deploys via SSM, and SES for email. Chosen over Fargate + RDS to keep the demo at about $20 a month.
+- **Cloud:** AWS. A single EC2 instance (t3a.small; x86 because PostGIS has no ARM image) running
+  `docker-compose.prod.yml` behind CloudFront, Postgres+PostGIS in a container with nightly backups
+  to S3, Terraform, GitHub OIDC deploys via SSM, and SES for email. Chosen over Fargate + RDS to
+  keep the demo at about $22 a month. CloudFront reaches the instance's firewalled public IP and
+  sends a secret origin header (no NAT, no VPC origins).
 
 ## Repo layout
 Monorepo:
@@ -46,7 +48,7 @@ Monorepo:
     services/     business logic
   alembic/
   tests/
-/infra      Terraform (later)
+/infra      Terraform (bootstrap/, app/)
 docker-compose.yml
 ```
 
