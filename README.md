@@ -48,6 +48,7 @@ backend/
     routers/       API endpoints (APIRouter)
     services/      business logic
       agent.py     the hand-written agent loop (plan, act, check, revise) and its guardrails
+      trip_planner.py  the trip planner task: prompt, submit_plan, itinerary check, walk estimates
   alembic/         database migrations
   tests/
 frontend/
@@ -379,6 +380,8 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **A hand-written agent loop, not a framework** | The trip planner's loop (`app/services/agent.py`) is one readable module: call the model, run the tools it asks for, check its proposal in code, feed problems back, pause for a person's approval. Every guardrail (model calls, cost and time per run, the daily budget) is an `if` before a model call, and it's all tested with a scripted fake model. A framework would hide exactly the parts worth showing. |
 | **Agent proposals checked by code, not another model** | A proposal (the finish tool's input) passes only if a deterministic check says so; its problems go back to the model as the tool's result, and the model revises. Code checks are free, repeatable and can't be talked round, and the same check grades the evals. |
 | **Agent state is its steps** | Every model call, tool call, check and piece of feedback is saved as an `agent_steps` row the moment it happens, and the conversation is rebuilt from them before each call. So the trace an admin reads is the run's actual state, and a run interrupted by a restart carries on from its last step (its heartbeat goes stale, and the next worker claims it). Each step stores the exact text sent to the model, so replays are byte-identical. |
+| **Itineraries checked against the database** | A trip plan passes only if every stop was returned by a search in that run, the start came from a location lookup, each requested category is covered by a stop's real category, no walk is over 4 km, and it fits the user's time limits. Names, categories and coordinates are then filled in from the database, so the plan the user approves can't contain anything the model made up. |
+| **Walking times estimated, not routed (for now)** | Straight-line distance × 1.3 at 4.8 km/h, labelled as an estimate in every plan. Good enough to sequence a few stops in a neighbourhood, and free. Real routing (#16) can replace one function without touching the agent or the check. |
 | **Run status changes are conditional updates** | `UPDATE ... WHERE status IN (...)`, so two workers can't both claim a run and a cancel always wins: the loop finds out at its next heartbeat. No locks are held while waiting on the model. |
 | **Strict tool schemas instead of eager input streaming** | Tool inputs here are tiny (coordinates, a place name), so streaming them early gains nothing. `strict: true` makes the API guarantee inputs match the schema. Bounds that strict schemas can't express (radius 50–2000 m, note length) are enforced by Pydantic, and an out-of-range value goes back to Claude as an error it can correct. |
 | **Only replayable turns are saved** | A turn that ends on an unanswered or cut-off tool call (refusal, `max_tokens`, budget running out, API failure) would be rejected when replayed, so its messages are dropped. Every call's cost is still logged. |

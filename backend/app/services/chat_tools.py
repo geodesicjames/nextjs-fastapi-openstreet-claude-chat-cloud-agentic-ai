@@ -223,7 +223,7 @@ def _error(message: str) -> ToolOutcome:
     return ToolOutcome(json.dumps({"error": message}), is_error=True, summary=message)
 
 
-def _distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     """Great-circle distance (haversine), accurate to well under 1% at these scales."""
     p1, p2 = math.radians(lat1), math.radians(lat2)
     dp, dl = p2 - p1, math.radians(lon2 - lon1)
@@ -276,7 +276,7 @@ async def _search_places(ctx: ToolContext, args: SearchPlacesIn) -> ToolOutcome:
         nearest_to=(args.lat, args.lon),
     )
     nearby = sorted(
-        ((_distance_m(args.lat, args.lon, hit.lat, hit.lon), hit) for hit in result.hits),
+        ((distance_m(args.lat, args.lon, hit.lat, hit.lon), hit) for hit in result.hits),
         key=lambda pair: pair[0],
     )
     nearby = [(d, hit) for d, hit in nearby if d <= args.radius_m]
