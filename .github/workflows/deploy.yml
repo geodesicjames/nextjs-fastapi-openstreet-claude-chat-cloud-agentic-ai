@@ -1,0 +1,164 @@
+name: Deploy
+
+# Build the production images, push them to ECR, and tell the app server to
+# run them. No AWS keys are stored anywhere: the job gets short-lived
+# credentials through GitHub's OIDC token, and AWS only grants them to jobs
+# in this repository's "production" environment (infra/bootstrap/main.tf),
+# which waits for a reviewer's approval.
+#
+# Needs these variables on the production environment (infra/README.md):
+#   AWS_DEPLOY_ROLE_ARN, AWS_REGION, APP_INSTANCE_ID, APP_URL
+
+on:
+  # Every push to main, once CI has passed on it.
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+  # By hand: redeploy, or roll back to an earlier commit on main.
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Commit on main to deploy (blank = latest)
+        required: false
+
+# One deploy at a time; a newer one waits rather than cancelling a half-done one.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PROJECT: places
+
+jobs:
+  deploy:
+    name: Deploy to production
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ vars.APP_URL }}
+    permissions:
+      contents: read
+      id-token: write # to request the OIDC token AWS trusts
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      INSTANCE_ID: ${{ vars.APP_INSTANCE_ID }}
+      APP_URL: ${{ vars.APP_URL }}
+      ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+    steps:
+      - name: Check configuration
+        run: |
+          missing=""
+          # (Their names on the environment: AWS_REGION, APP_INSTANCE_ID, APP_URL, AWS_DEPLOY_ROLE_ARN.)
+          for name in AWS_REGION INSTANCE_ID APP_URL ROLE_ARN; do
+            [ -n "${!name}" ] || missing="$missing $name"
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::Set these on the production environment (see infra/README.md):$missing"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0 # to check the commit is on main
+
+      - name: Pick the commit
+        id: commit
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          ref="${INPUT_REF:-${RUN_SHA:-$GITHUB_SHA}}"
+          sha=$(git rev-parse --verify "$ref^{commit}")
+          # Only commits that reached main (through a reviewed PR) are deployed.
+          git merge-base --is-ancestor "$sha" origin/main || {
+            echo "::error::$sha is not on main"; exit 1; }
+          git checkout --quiet "$sha"
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+          echo "Deploying $sha: $(git log -1 --format=%s)"
+
+      - name: AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Build and push images
+        id: images
+        env:
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          account=$(aws sts get-caller-identity --query Account --output text)
+          registry="$account.dkr.ecr.$AWS_REGION.amazonaws.com"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$registry"
+          for name in backend frontend; do
+            image="$registry/$PROJECT-$name:$SHA"
+            # Tags are immutable and named after the commit, so an image that
+            # exists is exactly this code: reuse it (redeploys, rollbacks).
+            if docker manifest inspect "$image" > /dev/null 2>&1; then
+              echo "$image already in ECR"
+            else
+              docker build --target prod -t "$image" "$name"
+              docker push --quiet "$image"
+            fi
+            echo "$name=$image" >> "$GITHUB_OUTPUT"
+          done
+
+      - name: Deploy on the server (SSM Run Command)
+        env:
+          BACKEND_IMAGE: ${{ steps.images.outputs.backend }}
+          FRONTEND_IMAGE: ${{ steps.images.outputs.frontend }}
+          SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          # Ship the files the server needs with the command itself, so the
+          # server never needs access to this repository.
+          bundle=$(tar -cz docker-compose.prod.yml scripts/deploy-on-server.sh scripts/backup-db.sh | base64 -w0)
+          app_dir="/srv/$PROJECT/app"
+          jq -n --arg bundle "$bundle" --arg dir "$app_dir" \
+                --arg backend "$BACKEND_IMAGE" --arg frontend "$FRONTEND_IMAGE" --arg region "$AWS_REGION" '{
+            commands: [
+              "set -e",
+              "mkdir -p \($dir) && cd \($dir)",
+              "echo \($bundle) | base64 -d | tar -xz",
+              "BACKEND_IMAGE=\($backend) FRONTEND_IMAGE=\($frontend) AWS_REGION=\($region) APP_DIR=\($dir) bash scripts/deploy-on-server.sh"
+            ],
+            executionTimeout: ["900"]
+          }' > params.json
+
+          command_id=$(aws ssm send-command \
+            --instance-ids "$INSTANCE_ID" \
+            --document-name AWS-RunShellScript \
+            --comment "deploy ${SHA:0:12}" \
+            --parameters file://params.json \
+            --query Command.CommandId --output text)
+          echo "SSM command $command_id"
+
+          status=Pending
+          for _ in $(seq 1 100); do
+            sleep 10
+            status=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+              --query Status --output text 2>/dev/null || echo Pending)
+            case "$status" in Pending|InProgress|Delayed) ;; *) break ;; esac
+          done
+
+          echo "::group::Server output"
+          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" \
+            --query '[StandardOutputContent, StandardErrorContent]' --output text || true
+          echo "::endgroup::"
+          echo "Status: $status"
+          [ "$status" = Success ]
+
+      - name: Smoke test through CloudFront
+        run: |
+          for _ in $(seq 1 12); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$APP_URL/api/health" || true)
+            echo "GET $APP_URL/api/health -> $code"
+            [ "$code" = 200 ] && exit 0
+            sleep 10
+          done
+          exit 1
