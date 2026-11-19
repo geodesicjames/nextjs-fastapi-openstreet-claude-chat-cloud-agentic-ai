@@ -119,3 +119,23 @@ async def get_session_user(db: AsyncSession, token: str) -> User | None:
 async def delete_session(db: AsyncSession, token: str) -> None:
     await db.execute(delete(UserSession).where(UserSession.token_hash == hash_token(token)))
     await db.commit()
+
+
+# Keep used and expired login tokens this long: comfortably past the
+# one-hour window that per-address rate limiting counts them in.
+LOGIN_TOKEN_RETENTION = timedelta(days=1)
+
+
+async def delete_expired(db: AsyncSession) -> tuple[int, int]:
+    """Delete stale login tokens and expired sessions; return how many of each.
+
+    Run daily by `python -m app.cli cleanup`. Expired rows are already
+    useless (every lookup checks expiry); this just stops the tables growing.
+    """
+    now = _now()
+    tokens = await db.execute(
+        delete(LoginToken).where(LoginToken.created_at < now - LOGIN_TOKEN_RETENTION)
+    )
+    sessions = await db.execute(delete(UserSession).where(UserSession.expires_at < now))
+    await db.commit()
+    return tokens.rowcount, sessions.rowcount  # pyright: ignore[reportAttributeAccessIssue]

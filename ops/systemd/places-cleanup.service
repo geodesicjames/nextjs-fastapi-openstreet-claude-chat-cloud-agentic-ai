@@ -1,0 +1,12 @@
+# Daily cleanup of old login tokens and expired sessions (app.cli cleanup).
+# Installed by scripts/deploy-on-server.sh; started by places-cleanup.timer.
+# Logs: journalctl -u places-cleanup
+[Unit]
+Description=Places: delete old login tokens and expired sessions
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/srv/places/app
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml --env-file .env exec -T backend python -m app.cli cleanup

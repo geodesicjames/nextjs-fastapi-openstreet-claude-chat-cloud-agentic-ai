@@ -10,7 +10,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.models import LoginToken, User, UserSession
 from app.security import hash_token
+from app.services.auth import delete_expired
 from tests.conftest import FakeEmailSender
+from tests.factories import make_user
 
 COOKIE = get_settings().session_cookie_name
 
@@ -179,3 +181,43 @@ async def test_logout_ends_the_session(
 
 async def test_logout_without_session_is_harmless(client: AsyncClient) -> None:
     assert (await client.post("/auth/logout")).status_code == 204
+
+
+async def test_cleanup_deletes_only_stale_tokens_and_expired_sessions(db: AsyncSession) -> None:
+    now = datetime.now(UTC)
+    user = await make_user(db, "a@example.com")
+    db.add_all(
+        [
+            # Old enough to go (also outside the rate-limit window).
+            LoginToken(
+                token_hash="t-old",
+                email="a@example.com",
+                expires_at=now - timedelta(days=2),
+                created_at=now - timedelta(days=2),
+            ),
+            # Expired, but recent: still counts towards the per-address limit.
+            LoginToken(
+                token_hash="t-recent",
+                email="a@example.com",
+                expires_at=now - timedelta(minutes=5),
+                created_at=now - timedelta(minutes=35),
+            ),
+            UserSession(
+                token_hash="s-expired",
+                user_id=user.id,
+                expires_at=now - timedelta(seconds=1),
+                last_seen_at=now - timedelta(days=30),
+            ),
+            UserSession(
+                token_hash="s-live",
+                user_id=user.id,
+                expires_at=now + timedelta(days=1),
+                last_seen_at=now,
+            ),
+        ]
+    )
+    await db.commit()
+
+    assert await delete_expired(db) == (1, 1)
+    assert set(await db.scalars(select(LoginToken.token_hash))) == {"t-recent"}
+    assert set(await db.scalars(select(UserSession.token_hash))) == {"s-live"}
