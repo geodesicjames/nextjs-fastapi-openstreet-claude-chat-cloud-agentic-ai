@@ -57,11 +57,13 @@ frontend/
   app/api/         route handlers the map and chat call from the browser (proxy to FastAPI)
   lib/chat.ts      chat types and the streamed-reply (SSE) reader
   lib/markdown.tsx tiny Markdown renderer for chat replies (React elements only)
+  proxy.ts         refuses requests that didn't come through CloudFront (production)
   scripts/         copy-maplibre-worker.mjs (see Decisions)
 docker-compose.yml       development stack (source mounted, auto-reload)
 docker-compose.prod.yml  production stack (see "Production stack")
 scripts/backup-db.sh     database backup (pg_dump, optional upload to S3)
-infra/                   Terraform for AWS (see infra/README.md)
+infra/bootstrap/         Terraform: state bucket, GitHub OIDC deploy role, budget
+infra/app/               Terraform: network, server, CloudFront, ECR, backups, SES, settings
 ```
 
 ## Local setup
@@ -277,8 +279,11 @@ Migrations are an explicit step. Settings come from `ENV_FILE` (`.env` by defaul
 production images on every PR.
 
 Deploying to AWS is set up in `infra/` (Terraform). `infra/README.md` walks through account
-security, SSO sign-in for the CLI, the one-time bootstrap, and the GitHub `production`
-environment.
+security, SSO sign-in for the CLI, the one-time bootstrap, the GitHub `production` environment,
+and the app stack (server, CloudFront, image registry, backups, email, settings), with costs and
+known limitations. In production the frontend serves only requests carrying CloudFront's secret
+`X-Origin-Verify` header (`frontend/proxy.ts`); locally, with `ORIGIN_VERIFY_SECRET` unset, it serves
+everything.
 
 ### Git hooks (once per clone)
 
@@ -360,14 +365,17 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Incomplete results instead of errors** | When Overpass is busy or the budget is used up, the map still shows cached places and says why some are missing, rather than failing. |
 | **Rate limits use the real client IP** | Requests reach FastAPI through Next.js, so the visitor's IP is in `X-Forwarded-For`. It's only trusted from `TRUSTED_PROXIES`, and read right to left, so clients can't dodge limits with a fake header. The counters are in memory for now; several backend instances would need Redis. |
 | **Map data via Next.js route handlers** | The map is browser code, so it can't use Server Components to fetch on every pan. `/api/places` and `/api/geocode` forward to FastAPI server-side, so the browser still only talks to the Next.js origin and FastAPI stays private. |
-| **Per-IP limits trust the edge proxy** | Next.js only fills in `X-Forwarded-For` when the request doesn't already have one, so with nothing in front of it (local dev) a client could fake its IP. In production the load balancer appends the real address, and FastAPI reads the header right to left. Per-IP limits are for fairness; the OSM usage budgets are enforced across the whole backend, so faked IPs can't push us over them. |
+| **Per-IP limits trust the edge proxy** | Next.js only fills in `X-Forwarded-For` when the request doesn't already have one, so with nothing in front of it (local dev) a client could fake its IP. In production CloudFront appends the real address, and FastAPI reads the header right to left. Per-IP limits are for fairness; the OSM usage budgets are enforced across the whole backend, so faked IPs can't push us over them. |
 | **MapLibre's worker is copied into `public/`** | MapLibre parses tiles in a Web Worker that it loads from a URL it works out at runtime, which bundlers can't follow. `pnpm dev` and `pnpm build` copy the installed worker to `public/vendor/` (gitignored), and the map calls `setWorkerUrl`. |
 | **Chat goes through Next.js route handlers too** | The browser streams replies from `/api/chat/...`, which forwards to FastAPI with the session cookie and passes the server-sent events straight through as they arrive. For requests that change data, the handler also refuses a foreign `Origin` header, as a second CSRF defence behind the SameSite=Lax cookie. |
 | **A tiny Markdown renderer, not a library** | Chat replies only need paragraphs, lists and bold. The renderer builds React elements, so model output is always escaped (no `dangerouslySetInnerHTML`), and there's no new dependency. |
 | **OSM links only if http(s)** | Anyone can edit OSM tags, so a `website` tag could be a `javascript:` URL. The details panel only links http and https addresses. |
 | **Evals call the real entry point with stubbed external services** | The eval runs `chat.stream_reply` with the real model and real tools, so prompt, tool and loop changes are all measured. Only Overpass and Nominatim are replaced, by a frozen fixture and a gazetteer, so runs are reproducible and cost nothing in OSM usage. |
 | **Tool use graded in code, grounding by a judge** | Whether the right tools were called with sensible arguments is checkable in code: properties, not an exact sequence. Whether an answer invents places or facts needs judgement, so a different model (Sonnet 5.5) grades it from per-claim verdicts, checked by known-negative tests. |
-| **One EC2 instance running Docker Compose** | About $20 a month, against about $50 for Fargate + RDS + ALB, which matters for a demo. The production compose file mirrors development, so local and server run the same images. The trade-offs: no high availability, a short restart on deploy, and the database's backups are ours to manage (nightly `pg_dump` to S3, with a tested restore). |
+| **One EC2 instance running Docker Compose** | About $22 a month, against about $50 for Fargate + RDS + ALB, which matters for a demo. The production compose file mirrors development, so local and server run the same images. The trade-offs: no high availability, a short restart on deploy, and the database's backups are ours to manage (nightly `pg_dump` to S3, with a tested restore). |
+| **CloudFront reaches the server over a firewalled public address** | CloudFront *VPC origins* would keep the server private, but a private server needs a NAT to reach Anthropic and OpenStreetMap, and a managed NAT gateway costs about $37 a month. Instead the server has a public address whose firewall admits only CloudFront's origin-facing ranges. Because those ranges are shared by all CloudFront customers, the app also requires a secret header that only our distribution adds (`frontend/proxy.ts`). The CloudFront-to-server hop is plain HTTP; see `infra/README.md`, "Known limitations". |
+| **x86 (t3a.small), not ARM (t4g.small)** | The official PostGIS image has no ARM build. x86 costs about $1.50 a month more, but every image runs as-is and CI builds without emulation. |
+| **The database on its own EBS volume** | The server is disposable (rebuilt from Terraform and the deploy); the data volume is protected from `terraform destroy` and survives replacing the instance. Nightly dumps to S3 cover losing the volume itself. |
 | **Dev and prod stages in one Dockerfile** | Shared base image and dependency layers. `dev` bind-mounts the source with reload; `prod` copies only what runs, with no dev dependencies, as a non-root user. |
 | **Migrations as a deploy step, not on startup** | Running `alembic upgrade` when a container starts races if two start at once, and hides a failed migration behind a crash loop. In production it's a one-off `migrate` service the deploy runs first. |
 | **pyright over mypy** | Faster, and the same engine as VS Code's Pylance, so editor and CI agree. |

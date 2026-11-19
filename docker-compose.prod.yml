@@ -10,7 +10,8 @@
 #   only on this stack's private network (the browser talks only to Next.js);
 # - migrations are an explicit step (the `migrate` service), run before `up`;
 # - settings come from ENV_FILE (default .env), written on the server from
-#   SSM Parameter Store at deploy time;
+#   SSM Parameter Store at deploy time (pass the same file with --env-file so
+#   POSTGRES_*, PGDATA_DIR and ORIGIN_VERIFY_SECRET are substituted here);
 # - images can be prebuilt (BACKEND_IMAGE / FRONTEND_IMAGE, e.g. from ECR);
 #   the build sections are used when they aren't set.
 
@@ -41,7 +42,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # A named volume by default; on the server PGDATA_DIR is a directory on
+      # its own EBS volume, so the data outlives the instance.
+      - ${PGDATA_DIR:-pgdata}:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -67,6 +70,9 @@ services:
       target: prod
     environment:
       API_URL: http://backend:8000
+      # Set on the server: requests must carry CloudFront's secret header
+      # (see frontend/proxy.ts). Empty means no check, for local runs.
+      ORIGIN_VERIFY_SECRET: ${ORIGIN_VERIFY_SECRET:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     depends_on:
