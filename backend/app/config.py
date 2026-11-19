@@ -75,6 +75,25 @@ class Settings(BaseSettings):
     # Most tool-using steps (model calls that ask for tools) per user message.
     # After that, the model must answer with what it has.
     chat_max_tool_steps: int = Field(default=6, gt=0)
+    # --- Agent (trip planner) ---------------------------------------------------
+    # Uses the chat grant and daily budget; these limit each run on top.
+    # Must have prices in app/services/pricing.py, like CHAT_MODEL.
+    agent_model: str = "claude-haiku-5-5"
+    # Planning benefits from more reasoning than a chat reply.
+    agent_effort: Literal["low", "medium", "high", "xhigh", "max"] = "medium"
+    agent_max_tokens: int = Field(default=16_000, gt=0)
+    # Model calls per run, across every revision. The last one is told to
+    # submit its plan; a run that still hasn't is stopped.
+    agent_max_model_calls: int = Field(default=12, ge=2)
+    # Estimated spend per run, checked before every model call.
+    agent_max_cost_usd: Decimal = Field(default=Decimal("0.20"), gt=0)
+    # Wall-clock time per leg (from start, or from a revision request, until
+    # the run pauses for approval or ends).
+    agent_max_seconds: int = Field(default=300, gt=0)
+    # A "running" run whose heartbeat is older than this was interrupted
+    # (e.g. by a restart) and may be picked up again.
+    agent_stale_after_seconds: int = Field(default=300, gt=0)
+
     # Access requests per email address per 24 hours; extras are silently
     # dropped (same response, so the form can't be used to spam the owner).
     access_request_max_per_day: int = 3
@@ -134,7 +153,7 @@ class Settings(BaseSettings):
         # `ANTHROPIC_API_KEY=` (empty, as in .env.example) means "not configured".
         return None if value == "" else value
 
-    @field_validator("chat_model")
+    @field_validator("chat_model", "agent_model")
     @classmethod
     def _model_has_prices(cls, value: str) -> str:
         # Imported here: pricing is a leaf module, but keep config import-light.

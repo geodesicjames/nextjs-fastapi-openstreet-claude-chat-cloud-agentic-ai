@@ -120,6 +120,7 @@ async def record_usage(
     usage: TokenUsage,
     stop_reason: str | None = None,
     conversation_id: uuid.UUID | None = None,
+    agent_run_id: uuid.UUID | None = None,
     commit: bool = True,
 ) -> LlmUsage:
     """Log one Claude call with its estimated cost (from app/services/pricing)."""
@@ -127,6 +128,7 @@ async def record_usage(
         user_id=user.id,
         grant_id=grant.id if grant else None,
         conversation_id=conversation_id,
+        agent_run_id=agent_run_id,
         model=model,
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
@@ -136,7 +138,8 @@ async def record_usage(
         cost_usd=cost_usd(model, usage),
     )
     db.add(row)
-    # The chat service saves the turn and its usage in one commit.
+    # The chat service saves the turn and its usage in one commit; the agent
+    # saves each model step with its usage.
     if commit:
         await db.commit()
     return row

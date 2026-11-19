@@ -5,6 +5,7 @@ tables when Alembic autogenerates migrations (Django finds models through
 INSTALLED_APPS; SQLAlchemy only knows about classes that have been imported).
 """
 
+from app.models.agent import AgentRun, AgentStep, RunStatus, StepKind
 from app.models.auth import LoginToken, UserSession
 from app.models.base import Base
 from app.models.chat import (
@@ -21,6 +22,8 @@ from app.models.user import User
 __all__ = [
     "AccessRequest",
     "AccessRequestStatus",
+    "AgentRun",
+    "AgentStep",
     "Base",
     "ChatGrant",
     "ChatMessage",
@@ -30,7 +33,9 @@ __all__ = [
     "LoginToken",
     "Place",
     "PlaceCell",
+    "RunStatus",
     "SavedPlace",
+    "StepKind",
     "UpstreamCall",
     "User",
     "UserSession",
