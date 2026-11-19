@@ -110,6 +110,12 @@ class Settings(BaseSettings):
     nominatim_daily_query_budget: int = 1000
     geocode_cache_days: int = 30
 
+    # --- Error reporting ---------------------------------------------------------
+    # Sentry project DSN for the backend; unset (or empty) means Sentry is off.
+    sentry_dsn: str | None = None
+    # The deployed commit, set by the deploy; tags errors with the release.
+    sentry_release: str | None = None
+
     # --- Rate limiting ----------------------------------------------------------
     # Requests per minute per client IP on the public map endpoints.
     places_rate_limit_per_minute: int = 60
@@ -122,7 +128,7 @@ class Settings(BaseSettings):
         default_factory=lambda: [IPv4Network("127.0.0.1/32"), IPv6Network("::1/128")]
     )
 
-    @field_validator("anthropic_api_key", mode="before")
+    @field_validator("anthropic_api_key", "sentry_dsn", "sentry_release", mode="before")
     @classmethod
     def _blank_key_is_unset(cls, value: object) -> object:
         # `ANTHROPIC_API_KEY=` (empty, as in .env.example) means "not configured".

@@ -34,7 +34,7 @@ async def request_access(
     if request is not None:
         admins = await service.admin_emails(db)
         if not admins:
-            logger.warning("Access request from %s but there are no admins", request.email)
+            logger.warning("Access request received but there are no admins to tell")
         for admin in admins:
             background.add_task(
                 email_sender.send,

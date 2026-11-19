@@ -14,6 +14,8 @@ from contextlib import asynccontextmanager
 import httpx
 from fastapi import FastAPI
 
+from app.config import get_settings
+from app.observability import init_sentry
 from app.ratelimit import RateLimiter
 from app.routers import access_requests, admin, auth, chat, geocode, health, places, saved_places
 from app.services.geocoding import NominatimClient
@@ -24,6 +26,8 @@ def create_app() -> FastAPI:
     # Send our own `app.*` loggers (e.g. the dev console email) to stderr at
     # INFO. Uvicorn configures only its own loggers.
     logging.basicConfig(level=logging.INFO, format="%(levelname)s:     %(name)s - %(message)s")
+    # Error reporting, before anything can fail. Off unless SENTRY_DSN is set.
+    init_sentry(get_settings())
 
     # One HTTP client (with its connection pool) for every outgoing call,
     # closed on shutdown. The lifespan function is FastAPI's startup/shutdown

@@ -8,6 +8,7 @@ name: Deploy
 #
 # Needs these variables on the production environment (infra/README.md):
 #   AWS_DEPLOY_ROLE_ARN, AWS_REGION, APP_INSTANCE_ID, APP_URL
+# and optionally SENTRY_DSN_FRONTEND (browser and Next.js server errors).
 
 on:
   # Every push to main, once CI has passed on it.
@@ -92,6 +93,7 @@ jobs:
         id: images
         env:
           SHA: ${{ steps.commit.outputs.sha }}
+          SENTRY_DSN_FRONTEND: ${{ vars.SENTRY_DSN_FRONTEND }}
         run: |
           account=$(aws sts get-caller-identity --query Account --output text)
           registry="$account.dkr.ecr.$AWS_REGION.amazonaws.com"
@@ -103,7 +105,14 @@ jobs:
             if docker manifest inspect "$image" > /dev/null 2>&1; then
               echo "$image already in ECR"
             else
-              docker build --target prod -t "$image" "$name"
+              # The frontend's Sentry settings are written into its bundles
+              # at build time; the backend reads its own at runtime.
+              build_args=()
+              if [ "$name" = frontend ]; then
+                build_args=(--build-arg "NEXT_PUBLIC_SENTRY_DSN=$SENTRY_DSN_FRONTEND"
+                            --build-arg "NEXT_PUBLIC_SENTRY_RELEASE=$SHA")
+              fi
+              docker build --target prod "${build_args[@]}" -t "$image" "$name"
               docker push --quiet "$image"
             fi
             echo "$name=$image" >> "$GITHUB_OUTPUT"
