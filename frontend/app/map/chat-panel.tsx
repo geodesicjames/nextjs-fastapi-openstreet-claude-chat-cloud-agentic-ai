@@ -3,20 +3,23 @@
 // are handed to the map (onPlaces) to show as markers.
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  type ChatAccessInfo,
+  type Access,
   type ChatPlace,
   type ConversationSummary,
   describeTool,
+  errorText,
+  fetchAccess,
   readEvents,
   type StoredMessage,
 } from "@/lib/chat";
 import { formatUsd } from "@/lib/format";
 import { Markdown } from "@/lib/markdown";
+
+import { AccessNotice, canUseAssistant } from "./access-notice";
 
 type ToolLine = { label: string; summary: string | null; ok: boolean };
 
@@ -27,12 +30,6 @@ type Message = {
   tools: ToolLine[];
   error?: string;
 };
-
-type Access =
-  | { kind: "loading" }
-  | { kind: "error" }
-  | { kind: "signed_out" }
-  | { kind: "ok"; info: ChatAccessInfo };
 
 const MAX_CHARS = 2000; // mirrors CHAT_MAX_MESSAGE_CHARS
 
@@ -149,30 +146,8 @@ export function ChatPanel({ onPlaces }: { onPlaces: (places: ChatPlace[]) => voi
     }
   }
 
-  if (access.kind === "loading") return <p className="text-sm text-neutral-500">Loading…</p>;
-  if (access.kind === "error") {
-    return <p className="text-sm text-red-600">Chat isn&apos;t available right now.</p>;
-  }
-  if (access.kind === "signed_out") {
-    return (
-      <p className="text-sm">
-        <Link href="/login" className="underline underline-offset-4">
-          Sign in
-        </Link>{" "}
-        to ask the assistant about places.
-      </p>
-    );
-  }
-  if (access.info.reason === "no_grant") {
-    return (
-      <p className="text-sm">
-        The assistant is invite-only for now.{" "}
-        <Link href="/request-access" className="underline underline-offset-4">
-          Request access
-        </Link>
-        .
-      </p>
-    );
+  if (!canUseAssistant(access)) {
+    return <AccessNotice access={access} purpose="ask the assistant about places" />;
   }
   const outOfBudget = access.info.reason === "budget_exhausted";
 
@@ -287,27 +262,7 @@ export function ChatPanel({ onPlaces }: { onPlaces: (places: ChatPlace[]) => voi
   );
 }
 
-async function fetchAccess(): Promise<Access> {
-  const res = await fetch("/api/chat/access");
-  if (res.status === 401) return { kind: "signed_out" };
-  if (!res.ok) return { kind: "error" };
-  return { kind: "ok", info: (await res.json()) as ChatAccessInfo };
-}
-
 async function fetchConversations(): Promise<ConversationSummary[] | null> {
   const res = await fetch("/api/chat/conversations");
   return res.ok ? ((await res.json()) as ConversationSummary[]) : null;
-}
-
-async function errorText(res: Response): Promise<string> {
-  if (res.status === 401) return "Please sign in again.";
-  if (res.status === 429) return "You've used today's chat budget. It resets at midnight UTC.";
-  if (res.status === 503) return "Chat isn't available right now.";
-  try {
-    const { detail } = (await res.json()) as { detail: unknown };
-    if (typeof detail === "string") return detail;
-  } catch {
-    // not JSON
-  }
-  return "Something went wrong. Please try again.";
 }
