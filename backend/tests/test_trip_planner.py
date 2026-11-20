@@ -6,7 +6,6 @@ Nominatim. The model is the scripted FakeChatModel.
 """
 
 import json
-from datetime import UTC, datetime
 from typing import Any, cast
 
 import pytest
@@ -16,16 +15,13 @@ from app.config import get_settings
 from app.models import (
     AgentRun,
     AgentStep,
-    GeocodeResult,
     Place,
-    PlaceCell,
     RunStatus,
     StepKind,
     User,
 )
 from app.services import agent
 from app.services.chat_tools import ToolContext, distance_m
-from app.services.grid import BBox, cells_for
 from app.services.trip_planner import (
     DETOUR_FACTOR,
     TRIP_PLANNER,
@@ -33,59 +29,14 @@ from app.services.trip_planner import (
     run_trip_tool,
     walk_minutes,
 )
-from tests.chat_helpers import THINKING, FakeChatModel, reply
+from tests.chat_helpers import FakeChatModel
 from tests.factories import grant, make_user
-
-LEITH = {"name": "Leith Walk", "lat": 55.9600, "lon": -3.1800}
-SPOTS = {
-    "cafe": {"name": "Bean There", "category": "cafe", "lat": 55.9610, "lon": -3.1800},  # ~111 m
-    "park": {"name": "Pilrig Park", "category": "park", "lat": 55.9605, "lon": -3.1810},  # ~85 m
-    "view": {"name": "Calton Hill", "category": "viewpoint", "lat": 55.9650, "lon": -3.1800},
-    "far": {
-        "name": "Far Feast",
-        "category": "restaurant",
-        "lat": 56.0100,
-        "lon": -3.1800,
-    },  # ~5.6 km
-}
+from tests.trip_helpers import LEITH, SPOTS, add_spots, call, plan
 
 
 @pytest.fixture
 async def spots(db: AsyncSession) -> dict[str, Place]:
-    now = datetime.now(UTC)
-    rows: dict[str, Place] = {}
-    for i, (key, p) in enumerate(SPOTS.items()):
-        place = Place(
-            osm_type="node",
-            osm_id=2000 + i,
-            name=p["name"],
-            category=p["category"],
-            tags={"name": p["name"]},
-            geom=f"SRID=4326;POINT({p['lon']} {p['lat']})",
-            fetched_at=now,
-        )
-        db.add(place)
-        rows[key] = place
-    area = BBox(west=-3.20, south=55.95, east=-3.16, north=55.97)
-    db.add_all(PlaceCell(ix=ix, iy=iy, fetched_at=now) for ix, iy in cells_for(area))
-    db.add(
-        GeocodeResult(
-            query="leith walk",
-            results=[
-                {
-                    "name": "Leith Walk",
-                    "display_name": "Leith Walk, Edinburgh, Scotland",
-                    "lat": LEITH["lat"],
-                    "lon": LEITH["lon"],
-                    "bbox": [-3.19, 55.95, -3.17, 55.97],
-                    "kind": "highway:primary",
-                }
-            ],
-            fetched_at=now,
-        )
-    )
-    await db.commit()
-    return rows
+    return await add_spots(db)
 
 
 @pytest.fixture
@@ -135,23 +86,6 @@ def found(*places: Place) -> AgentStep:
 def _coords(place: Place) -> dict[str, float]:
     spot = next(s for s in SPOTS.values() if s["name"] == place.name)
     return {"lat": spot["lat"], "lon": spot["lon"]}
-
-
-def plan(*stops: tuple[Place, int], **fields: Any) -> dict[str, Any]:
-    return {
-        "title": "Coffee and a park",
-        "summary": "A short loop from Leith Walk.",
-        "categories": ["cafe", "park"],
-        "start": LEITH,
-        "return_to_start": True,
-        "start_time": None,
-        "end_by": None,
-        "max_minutes": None,
-        "stops": [
-            {"place_id": str(place.id), "minutes": minutes, "why": "Close by."}
-            for place, minutes in stops
-        ],
-    } | fields
 
 
 async def check(db: AsyncSession, user: User, steps: list[AgentStep], proposal: object):
@@ -277,11 +211,6 @@ async def test_the_planner_cannot_save_places(db: AsyncSession, user: User) -> N
 
 
 # --- A whole run ---------------------------------------------------------------------------
-
-
-def call(name: str, tool_input: dict[str, Any], id: str) -> list[Any]:
-    block = {"type": "tool_use", "id": id, "name": name, "input": tool_input}
-    return reply(content=[THINKING, block], stop_reason="tool_use")
 
 
 async def test_a_run_finds_places_revises_and_waits_for_approval(

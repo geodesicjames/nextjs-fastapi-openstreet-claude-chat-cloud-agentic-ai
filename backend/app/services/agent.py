@@ -235,10 +235,30 @@ async def get_run(db: AsyncSession, user: User, run_id: uuid.UUID) -> AgentRun |
     )
 
 
-async def load_steps(db: AsyncSession, run: AgentRun) -> list[AgentStep]:
+async def load_steps(db: AsyncSession, run: AgentRun, *, after: int = -1) -> list[AgentStep]:
+    """The run's steps in order; only those with seq > `after` if given."""
     return list(
         await db.scalars(
-            select(AgentStep).where(AgentStep.run_id == run.id).order_by(AgentStep.seq)
+            select(AgentStep)
+            .where(AgentStep.run_id == run.id, AgentStep.seq > after)
+            .order_by(AgentStep.seq)
+        )
+    )
+
+
+async def find_claimable(db: AsyncSession, settings: Settings) -> list[uuid.UUID]:
+    """Runs a worker could pick up: queued, or running but interrupted."""
+    stale = _now() - timedelta(seconds=settings.agent_stale_after_seconds)
+    return list(
+        await db.scalars(
+            select(AgentRun.id)
+            .where(
+                or_(
+                    AgentRun.status == RunStatus.QUEUED,
+                    and_(AgentRun.status == RunStatus.RUNNING, AgentRun.heartbeat_at < stale),
+                )
+            )
+            .order_by(AgentRun.created_at)
         )
     )
 
@@ -312,6 +332,13 @@ async def cancel(db: AsyncSession, run: AgentRun) -> bool:
     return changed
 
 
+async def mark_failed(db: AsyncSession, run: AgentRun, error: str) -> bool:
+    """End a running run as failed, e.g. after an unexpected error in the worker."""
+    changed = await _transition(db, run, RunStatus.FAILED, (RunStatus.RUNNING,), error=error)
+    await db.commit()
+    return changed
+
+
 async def _claim(db: AsyncSession, settings: Settings, run: AgentRun) -> bool:
     """Take the run for this worker: queued, or running but interrupted."""
     now = _now()
@@ -381,8 +408,7 @@ async def advance(
 
     async def fail(error: str) -> None:
         logger.info("Agent run %s stopped: %s", run.id, error)
-        await _transition(db, run, RunStatus.FAILED, (RunStatus.RUNNING,), error=error)
-        await db.commit()
+        await mark_failed(db, run, error)
 
     while True:
         if not await _heartbeat(db, run):

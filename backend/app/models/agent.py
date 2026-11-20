@@ -84,7 +84,7 @@ class AgentRun(TimestampMixin, Base):
     goal: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(24), default=RunStatus.QUEUED)
     # Why it failed: step_limit | cost_limit | time_limit | budget | unavailable
-    # | refused | truncated | check_failed.
+    # | refused | truncated | check_failed | no_access | internal.
     error: Mapped[str | None] = mapped_column(String(40))
     # The last plan that passed the check (the finish tool's input).
     plan: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
