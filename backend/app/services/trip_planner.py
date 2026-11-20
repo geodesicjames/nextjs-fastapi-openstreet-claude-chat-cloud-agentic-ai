@@ -31,6 +31,7 @@ from typing import Any, Literal
 
 from anthropic.types import ToolParam
 from pydantic import BaseModel, Field, ValidationError
+from pydantic_core import ErrorDetails
 
 from app.models import AgentRun, AgentStep, StepKind
 from app.services import places
@@ -246,18 +247,22 @@ def _what_tools_returned(steps: list[AgentStep]) -> tuple[set[str], list[tuple[f
     return place_ids, points
 
 
+def _schema_problem(error: ErrorDetails) -> str:
+    """One validation error, worded for the model (and for people reading the trace)."""
+    where = ".".join(map(str, error["loc"])) or "input"
+    if error["type"] == "string_pattern_mismatch":  # the HH:MM times
+        # Show what was sent: models sometimes wrap the time in extra quotes.
+        return f"{where}: use 24-hour HH:MM, like 14:30 (got {error['input']!r})."
+    return f"{where}: {error['msg']}"
+
+
 async def check_plan(
     ctx: ToolContext, run: AgentRun, steps: list[AgentStep], proposal: object
 ) -> CheckResult:
     try:
         plan = PlanIn.model_validate(proposal)
     except ValidationError as error:
-        return CheckResult(
-            ok=False,
-            problems=[
-                f"{'.'.join(map(str, e['loc'])) or 'input'}: {e['msg']}" for e in error.errors()
-            ],
-        )
+        return CheckResult(ok=False, problems=[_schema_problem(e) for e in error.errors()])
 
     problems: list[str] = []
     seen_ids, seen_points = _what_tools_returned(steps)

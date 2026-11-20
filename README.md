@@ -58,9 +58,10 @@ frontend/
   lib/auth-actions.ts  Server Actions for sign-in and sign-out
   lib/access-actions.ts  Server Actions for requesting access and the admin page
   app/admin/usage/ Claude spend page (chart in plain HTML/CSS, no chart library)
-  app/map/         the map page (MapLibre GL, a Client Component)
-  app/api/         route handlers the map and chat call from the browser (proxy to FastAPI)
-  lib/chat.ts      chat types and the streamed-reply (SSE) reader
+  app/map/         the map page (MapLibre GL, a Client Component) and its Ask/Plan/Saved tabs
+  app/api/         route handlers the map, chat and planner call from the browser (proxy to FastAPI)
+  lib/chat.ts      chat types and the server-sent events (SSE) reader
+  lib/agent.ts     trip planner types and how each step is described
   lib/markdown.tsx tiny Markdown renderer for chat replies (React elements only)
   app/api/health/  overall health, checked through CloudFront after each deploy
   proxy.ts         refuses requests that didn't come through CloudFront (production)
@@ -229,13 +230,22 @@ or closer and places load for the visible area, refreshing as you pan. You can
 filter by category, search for a place (on submit), and click a place for its
 opening hours, website and a link to OpenStreetMap.
 
-The side panel has three tabs:
+The side panel has four tabs:
 - **Explore:** the search, filters and list above.
 - **Ask:** chat with the assistant, for invited users. Replies stream in, each
   tool step shows as a status line ("Searching cafés within 500 m · Found 27
   places"), and the places it finds appear on the map as larger, outlined
   markers.
-- **Saved:** places the assistant saved for you. To use another tile
+- **Plan:** the trip planner, for invited users. Describe an outing ("coffee,
+  then a park, near Leith Walk, back by 4") and watch the agent work: each
+  search, each proposal and any problems the check found appear as they
+  happen. The checked itinerary shows as a card with times and walking legs,
+  and on the map as numbered markers joined by a dashed line. Approve it, send
+  it back with changes, or cancel. The run lives on the server, so closing the
+  tab doesn't stop it, and reloading reopens it where it is.
+- **Saved:** places the assistant saved for you.
+
+To use another tile
 provider, set `NEXT_PUBLIC_MAP_STYLE_URL` to its style URL. Tile keys are
 public by design.
 

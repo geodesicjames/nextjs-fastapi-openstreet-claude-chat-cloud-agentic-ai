@@ -36,15 +36,18 @@ export type ChatEvent =
       cost_usd: number;
     };
 
+export type SseEvent = { event: string; data: unknown };
+
 /**
  * Read server-sent events from a fetch() response body, yielding each event
  * as soon as it arrives.
  *
- * The browser's EventSource only supports GET, so for a POST we read the
- * stream ourselves. Events are separated by a blank line; each has an
- * `event:` line and a `data:` line holding JSON.
+ * The browser's EventSource only supports GET and can't resume from a
+ * position of our choosing, so we read the stream ourselves. Events are
+ * separated by a blank line; each has an `event:` line and a `data:` line
+ * holding JSON. Lines starting with ":" are comments (keep-alives).
  */
-export async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
+export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator<SseEvent> {
   const reader = body.getReader();
   // stream: true keeps a multi-byte character that is split across chunks
   // (e.g. "é") intact until its second half arrives.
@@ -58,15 +61,55 @@ export async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenera
     while ((end = buffer.indexOf("\n\n")) !== -1) {
       const frame = buffer.slice(0, end);
       buffer = buffer.slice(end + 2);
-      let type = "";
+      let event = "";
       let data = "";
       for (const line of frame.split("\n")) {
-        if (line.startsWith("event: ")) type = line.slice(7);
+        if (line.startsWith("event: ")) event = line.slice(7);
         else if (line.startsWith("data: ")) data += line.slice(6);
       }
-      if (type && data) yield { type, ...JSON.parse(data) } as ChatEvent;
+      if (event && data) yield { event, data: JSON.parse(data) };
     }
   }
+}
+
+/** The chat reply's events (see backend/app/services/chat.py). */
+export async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
+  for await (const { event, data } of readSse(body)) {
+    yield { type: event, ...(data as object) } as ChatEvent;
+  }
+}
+
+// --- Access, shared by the Ask and Plan tabs ---------------------------------------
+
+export type Access =
+  | { kind: "loading" }
+  | { kind: "error" }
+  | { kind: "signed_out" }
+  | { kind: "ok"; info: ChatAccessInfo };
+
+export async function fetchAccess(): Promise<Access> {
+  try {
+    const res = await fetch("/api/chat/access");
+    if (res.status === 401) return { kind: "signed_out" };
+    if (!res.ok) return { kind: "error" };
+    return { kind: "ok", info: (await res.json()) as ChatAccessInfo };
+  } catch {
+    return { kind: "error" };
+  }
+}
+
+/** A message for a failed chat or agent request, from its status or `detail`. */
+export async function errorText(res: Response): Promise<string> {
+  if (res.status === 401) return "Please sign in again.";
+  if (res.status === 429) return "You've used today's chat budget. It resets at midnight UTC.";
+  if (res.status === 503) return "The assistant isn't available right now.";
+  try {
+    const { detail } = (await res.json()) as { detail: unknown };
+    if (typeof detail === "string") return detail;
+  } catch {
+    // not JSON
+  }
+  return "Something went wrong. Please try again.";
 }
 
 /** What the assistant is doing, in words, for a tool_start event. */

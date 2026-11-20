@@ -1,6 +1,7 @@
 // The interactive map: MapLibre GL with OpenFreeMap vector tiles, place
 // markers loaded from /api/places as the map moves, category filters, place
-// search and a details panel.
+// search and a details panel. The side panel's tabs also hold the chat and
+// the trip planner, whose places and itineraries are drawn on this map.
 //
 // A Client Component because it is all browser interactivity. MapLibre itself
 // needs `window` and WebGL, so it is imported inside useEffect (only ever in
@@ -25,15 +26,18 @@ import {
   type PlaceDetail,
   type PlaceFeature,
 } from "@/lib/map";
+import type { TripPlan } from "@/lib/agent";
 import type { ChatPlace } from "@/lib/chat";
 
 import { ChatPanel } from "./chat-panel";
+import { PlannerPanel } from "./planner-panel";
 import { SavedPanel } from "./saved-panel";
 
-type Tab = "explore" | "ask" | "saved";
+type Tab = "explore" | "ask" | "plan" | "saved";
 const TABS: [Tab, string][] = [
   ["explore", "Explore"],
   ["ask", "Ask"],
+  ["plan", "Plan"],
   ["saved", "Saved"],
 ];
 
@@ -82,6 +86,10 @@ export function PlacesMap() {
   const [tab, setTab] = useState<Tab>("explore");
   // Places the assistant found, shown as their own, larger markers.
   const [chatPlaces, setChatPlaces] = useState<ChatPlace[]>([]);
+  // The trip planner's itinerary: numbered markers joined by a line. Also
+  // kept in a ref, in case it arrives before the map has finished loading.
+  const [tripPlan, setTripPlan] = useState<TripPlan | null>(null);
+  const tripPlanRef = useRef<TripPlan | null>(null);
 
   // These callbacks read state through refs, so they never go stale and can
   // be registered once as MapLibre event listeners.
@@ -210,6 +218,43 @@ export function PlacesMap() {
             "circle-stroke-color": "#171717",
           },
         });
+        // The itinerary, above everything else.
+        map.addSource("trip", { type: "geojson", data: EMPTY });
+        map.addLayer({
+          id: "trip-line",
+          type: "line",
+          source: "trip",
+          filter: ["==", ["geometry-type"], "LineString"],
+          layout: { "line-cap": "round", "line-join": "round" },
+          paint: { "line-color": "#171717", "line-width": 3, "line-dasharray": [1, 2] },
+        });
+        map.addLayer({
+          id: "trip-stops",
+          type: "circle",
+          source: "trip",
+          filter: ["==", ["geometry-type"], "Point"],
+          paint: {
+            "circle-radius": 11,
+            "circle-color": "#171717",
+            "circle-stroke-width": 2,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
+        map.addLayer({
+          id: "trip-labels",
+          type: "symbol",
+          source: "trip",
+          filter: ["==", ["geometry-type"], "Point"],
+          layout: {
+            "text-field": ["get", "label"],
+            // A font the tile style provides (OpenFreeMap serves Noto Sans).
+            "text-font": ["Noto Sans Bold"],
+            "text-size": 12,
+            "text-allow-overlap": true,
+            "text-ignore-placement": true,
+          },
+          paint: { "text-color": "#ffffff" },
+        });
         map.on("click", "places", (event) => {
           const id = event.features?.[0]?.properties?.id;
           if (typeof id === "string") void selectPlace(id);
@@ -218,11 +263,16 @@ export function PlacesMap() {
           const id = event.features?.[0]?.properties?.place_id;
           if (typeof id === "string") void selectPlace(id);
         });
-        for (const layer of ["places", "chat-places"]) {
+        map.on("click", "trip-stops", (event) => {
+          const id = event.features?.[0]?.properties?.place_id;
+          if (typeof id === "string" && id) void selectPlace(id);
+        });
+        for (const layer of ["places", "chat-places", "trip-stops"]) {
           map.on("mouseenter", layer, () => (map.getCanvas().style.cursor = "pointer"));
           map.on("mouseleave", layer, () => (map.getCanvas().style.cursor = ""));
         }
         readyRef.current = true;
+        if (tripPlanRef.current) drawTrip(map, tripPlanRef.current);
         scheduleLoad(0);
       });
       map.on("moveend", () => scheduleLoad(DEBOUNCE_MS));
@@ -276,6 +326,13 @@ export function PlacesMap() {
       });
     }
   }, [chatPlaces]);
+
+  // Draw the itinerary (or clear it) and bring it into view.
+  useEffect(() => {
+    tripPlanRef.current = tripPlan;
+    const map = mapRef.current;
+    if (map && readyRef.current) drawTrip(map, tripPlan);
+  }, [tripPlan]);
 
   function toggleCategory(id: CategoryId) {
     const next = categories.includes(id) ? categories.filter((c) => c !== id) : [...categories, id];
@@ -341,6 +398,21 @@ export function PlacesMap() {
         >
           <ChatPanel onPlaces={setChatPlaces} />
         </div>
+        <div
+          role="tabpanel"
+          id="panel-plan"
+          aria-labelledby="tab-plan"
+          hidden={tab !== "plan"}
+          className="flex flex-col gap-4"
+        >
+          <PlannerPanel
+            onPlan={setTripPlan}
+            onShow={(stop) => {
+              mapRef.current?.flyTo({ center: [stop.lon, stop.lat], zoom: 16 });
+              if (stop.place_id) void selectPlace(stop.place_id);
+            }}
+          />
+        </div>
         <div role="tabpanel" id="panel-saved" aria-labelledby="tab-saved" hidden={tab !== "saved"}>
           {tab === "saved" && (
             <SavedPanel
@@ -393,6 +465,49 @@ export function PlacesMap() {
       </div>
     </div>
   );
+}
+
+/**
+ * Put a trip plan on the map: "S" at the start, a numbered marker per stop,
+ * and a dashed line through them in order (back to the start if the plan
+ * returns there). A null plan clears it.
+ */
+function drawTrip(map: MapLibreMap, plan: TripPlan | null) {
+  const source = map.getSource("trip") as GeoJSONSource | undefined;
+  if (!source) return;
+  if (!plan) {
+    source.setData(EMPTY);
+    return;
+  }
+  const start: [number, number] = [plan.start.lon, plan.start.lat];
+  const path = [start, ...plan.stops.map((s): [number, number] => [s.lon, s.lat])];
+  if (plan.return) path.push(start);
+  source.setData({
+    type: "FeatureCollection",
+    features: [
+      {
+        type: "Feature",
+        geometry: { type: "LineString", coordinates: path },
+        properties: {},
+      },
+      {
+        type: "Feature",
+        geometry: { type: "Point", coordinates: start },
+        properties: { label: "S", place_id: "" },
+      },
+      ...plan.stops.map((stop, i) => ({
+        type: "Feature" as const,
+        geometry: { type: "Point" as const, coordinates: [stop.lon, stop.lat] },
+        properties: { label: String(i + 1), place_id: stop.place_id },
+      })),
+    ],
+  });
+  const lons = path.map(([lon]) => lon);
+  const lats = path.map(([, lat]) => lat);
+  map.fitBounds([Math.min(...lons), Math.min(...lats), Math.max(...lons), Math.max(...lats)], {
+    padding: 60,
+    maxZoom: 16,
+  });
 }
 
 function emptyCollection(): PlaceCollection {

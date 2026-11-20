@@ -201,7 +201,7 @@ async def test_malformed_proposals_list_every_problem(
     proposal = plan((spots["cafe"], 2), start_time="2pm")
     result = await check(db, user, [located(LEITH), found(spots["cafe"])], proposal)
     assert not result.ok
-    assert any(p.startswith("start_time:") for p in result.problems)
+    assert "start_time: use 24-hour HH:MM, like 14:30 (got '2pm')." in result.problems
     assert any(p.startswith("stops.0.minutes:") for p in result.problems)
 
 
