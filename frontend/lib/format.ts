@@ -20,3 +20,14 @@ export function formatDate(iso: string): string {
 export function isoDate(iso: string): string {
   return new Date(iso).toISOString().slice(0, 10);
 }
+
+const dateTimeFormat = new Intl.DateTimeFormat("en-GB", {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: "UTC",
+});
+
+/** "2026-11-17T13:26:22Z" -> "17 Nov 2026, 13:26" (UTC) */
+export function formatDateTime(iso: string): string {
+  return dateTimeFormat.format(new Date(iso));
+}

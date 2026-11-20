@@ -1,5 +1,5 @@
 // Admin page: review access requests and manage chat grants. Spend is on
-// /admin/usage.
+// /admin/usage, agent runs and their traces on /admin/agent.
 //
 // The data is fetched server-side as the signed-in visitor. FastAPI's
 // require_admin decides who sees it: for anyone else the admin endpoints
@@ -20,9 +20,14 @@ export default function AdminPage() {
     <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-10 px-6 py-10">
       <div className="flex items-baseline justify-between gap-4">
         <h1 className="text-2xl font-semibold">Admin</h1>
-        <Link href="/admin/usage" className="text-sm underline underline-offset-4">
-          Claude spend →
-        </Link>
+        <nav className="flex gap-4 text-sm">
+          <Link href="/admin/agent" className="underline underline-offset-4">
+            Agent runs →
+          </Link>
+          <Link href="/admin/usage" className="underline underline-offset-4">
+            Claude spend →
+          </Link>
+        </nav>
       </div>
       {/* Everything below depends on the visitor's cookie. */}
       <Suspense fallback={<p className="text-neutral-500">Loading…</p>}>

@@ -51,6 +51,7 @@ backend/
       trip_planner.py  the trip planner task: prompt, submit_plan, itinerary check, walk estimates
       agent_worker.py  drives agent runs in the background; a sweeper resumes interrupted ones
   alembic/         database migrations
+  evals/           chat tool-use and trip-planner evals (real model, frozen map data; manual)
   tests/
 frontend/
   app/             routes (App Router)
@@ -58,6 +59,7 @@ frontend/
   lib/auth-actions.ts  Server Actions for sign-in and sign-out
   lib/access-actions.ts  Server Actions for requesting access and the admin page
   app/admin/usage/ Claude spend page (chart in plain HTML/CSS, no chart library)
+  app/admin/agent/ agent runs and each run's step-by-step trace
   app/map/         the map page (MapLibre GL, a Client Component) and its Ask/Plan/Saved tabs
   app/api/         route handlers the map, chat and planner call from the browser (proxy to FastAPI)
   lib/chat.ts      chat types and the server-sent events (SSE) reader
@@ -151,6 +153,11 @@ How someone gets access:
 4. **Claude spend** (http://localhost:3000/admin/usage, `GET /admin/usage?days=30`)
    shows the estimated cost over the last 7, 30 or 90 days: totals, a chart of spend per UTC
    day, and breakdowns by user and by model, from the `llm_usage` ledger.
+5. **Agent runs** (http://localhost:3000/admin/agent, `GET /admin/agent/runs`) lists
+   everyone's trip-planner runs. Each opens a trace of every step exactly as the
+   model saw it: model calls with their text, tool calls, tokens, cost and time;
+   tool calls with the output sent back; checks with the problems found; and any
+   feedback. Thinking signatures are never sent out, even to admins.
 
 The site header shows each signed-in user how many chat tokens they have left
 today, or a "Request chat access" link if they have no grant. Admins also see
@@ -288,6 +295,30 @@ code checks have offline tests (`tests/test_eval_grader.py`) that run in CI. Res
 to `.claude/hillclimb/chat-tools/<variant>/`; the report is built with the Claude API
 skill's `build-report-lite.mjs`.
 
+`backend/evals/trip_planner/` is a goal-based eval of the trip planner. Twelve goals
+("Starting at 2pm from the Royal Mile: a viewpoint, a café and a toilet stop, back by
+4pm") run through the worker's own entry point (`drive_run`), so the real loop, tools,
+check and guardrails are all measured, on the same frozen map data. Grading is all code
+(`grade.py`), no judge: `success` means a plan passed the app's check *and* matches what
+the goal asked for (start, categories, number of stops, return, time limits, deadline);
+`first_try` means the model's first proposal was already valid. The runner records model
+calls, cost and latency too, and `--report` compares variants, e.g. two models.
+
+```bash
+cd backend
+uv run python -m evals.trip_planner.run_eval --dry-run          # free: a scripted model
+uv run python -m evals.trip_planner.run_eval --approve-harness  # after reviewing any eval change
+uv run python -m evals.trip_planner.run_eval --reps 2           # Haiku 5.5 (the default)
+uv run python -m evals.trip_planner.run_eval --reps 2 --variant sonnet --model claude-sonnet-5-5
+uv run python -m evals.trip_planner.run_eval --report           # variants side by side
+```
+
+The dry run plans every goal with a scripted model through the same code. It costs
+nothing, shows the fixture can satisfy every goal, and runs in CI along with the
+grader's tests (`tests/test_trip_eval_grader.py`). Paid runs are manual. Shared
+plumbing for both evals (eval database, fixture, stubs, harness gate) is in
+`evals/common.py`.
+
 ### Production stack
 
 `docker-compose.prod.yml` is what runs on the server, and you can run it locally too:
@@ -413,6 +444,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Chat goes through Next.js route handlers too** | The browser streams replies from `/api/chat/...`, which forwards to FastAPI with the session cookie and passes the server-sent events straight through as they arrive. For requests that change data, the handler also refuses a foreign `Origin` header, as a second CSRF defence behind the SameSite=Lax cookie. |
 | **A tiny Markdown renderer, not a library** | Chat replies only need paragraphs, lists and bold. The renderer builds React elements, so model output is always escaped (no `dangerouslySetInnerHTML`), and there's no new dependency. |
 | **OSM links only if http(s)** | Anyone can edit OSM tags, so a `website` tag could be a `javascript:` URL. The details panel only links http and https addresses. |
+| **Agent evals graded against the goal, in code** | The app's check already proves a plan is valid (real places, short legs, times that add up), so the eval asks the remaining question: is it the plan the user asked for? Each case lists what the goal requires (start, categories, deadline...) and code compares the plan to it. No judge model means grading is free, exact and repeatable, so comparing models costs only the runs. |
 | **Evals call the real entry point with stubbed external services** | The eval runs `chat.stream_reply` with the real model and real tools, so prompt, tool and loop changes are all measured. Only Overpass and Nominatim are replaced, by a frozen fixture and a gazetteer, so runs are reproducible and cost nothing in OSM usage. |
 | **Tool use graded in code, grounding by a judge** | Whether the right tools were called with sensible arguments is checkable in code: properties, not an exact sequence. Whether an answer invents places or facts needs judgement, so a different model (Sonnet 5.5) grades it from per-claim verdicts, checked by known-negative tests. |
 | **One EC2 instance running Docker Compose** | About $22 a month, against about $50 for Fargate + RDS + ALB, which matters for a demo. The production compose file mirrors development, so local and server run the same images. The trade-offs: no high availability, a short restart on deploy, and the database's backups are ours to manage (nightly `pg_dump` to S3, with a tested restore). |

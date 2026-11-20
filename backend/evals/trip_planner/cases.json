@@ -1,0 +1,89 @@
+[
+  {
+    "id": "t01",
+    "goal": "Coffee and then a park, starting from Leith Walk.",
+    "tags": ["basic"],
+    "expect": {"near": "Leith Walk", "categories": ["cafe", "park"]}
+  },
+  {
+    "id": "t02",
+    "goal": "I'm at the Grassmarket. Lunch somewhere, then a viewpoint, and back to the Grassmarket.",
+    "tags": ["basic", "return"],
+    "expect": {"near": "Grassmarket", "categories": ["restaurant", "viewpoint"], "return_to_start": true}
+  },
+  {
+    "id": "t03",
+    "goal": "A café near Stockbridge, then a walk in a park. I have 90 minutes in total.",
+    "tags": ["time"],
+    "expect": {"near": "Stockbridge", "categories": ["cafe", "park"], "max_minutes": 90}
+  },
+  {
+    "id": "t04",
+    "goal": "Starting at 2pm from the Royal Mile: a viewpoint, a café and a toilet stop. I need to be back on the Royal Mile by 4pm.",
+    "tags": ["time", "clock", "return"],
+    "expect": {
+      "near": "Royal Mile",
+      "categories": ["viewpoint", "cafe", "toilets"],
+      "start_time": "14:00",
+      "end_by": "16:00",
+      "return_to_start": true
+    }
+  },
+  {
+    "id": "t05",
+    "goal": "Afternoon with a toddler in Bruntsfield: a park, then somewhere for a snack, and toilets on the way.",
+    "tags": ["family"],
+    "expect": {"near": "Bruntsfield", "categories": ["park", "cafe", "toilets"]}
+  },
+  {
+    "id": "t06",
+    "goal": "Three cafés to try in Marchmont, one after another, then home to where I started.",
+    "tags": ["repeat-category", "return"],
+    "expect": {"near": "Marchmont", "categories": ["cafe"], "min_stops": 3, "return_to_start": true}
+  },
+  {
+    "id": "t07",
+    "goal": "Sunset walk from Calton Hill: a viewpoint or two, then dinner. Start at 7pm, finish by 9:30pm.",
+    "tags": ["time", "clock"],
+    "expect": {
+      "near": "Calton Hill",
+      "categories": ["viewpoint", "restaurant"],
+      "start_time": "19:00",
+      "end_by": "21:30"
+    }
+  },
+  {
+    "id": "t08",
+    "goal": "Running near the Meadows: where can I refill my water bottle and use a toilet, then grab a coffee? Keep it under an hour.",
+    "tags": ["time", "amenities"],
+    "expect": {"near": "Meadows", "categories": ["drinking_water", "toilets", "cafe"], "max_minutes": 60}
+  },
+  {
+    "id": "t09",
+    "goal": "From Haymarket: a restaurant for lunch then a park to sit in. Leaving at 12:30.",
+    "tags": ["clock"],
+    "expect": {"near": "Haymarket", "categories": ["restaurant", "park"], "start_time": "12:30"}
+  },
+  {
+    "id": "t10",
+    "goal": "Short loop from Dean Village: a viewpoint and a café, back where I started, 45 minutes max.",
+    "tags": ["time", "return"],
+    "expect": {"near": "Dean Village", "categories": ["viewpoint", "cafe"], "max_minutes": 45, "return_to_start": true}
+  },
+  {
+    "id": "t11",
+    "goal": "Princes Street: I want coffee, a park and a viewpoint, in whatever order makes the walk shortest.",
+    "tags": ["ordering"],
+    "expect": {"near": "Princes Street", "categories": ["cafe", "park", "viewpoint"]}
+  },
+  {
+    "id": "t12",
+    "goal": "Near Arthur's Seat: water, a viewpoint, then a café to finish. Starting at 10am.",
+    "tags": ["clock", "amenities"],
+    "expect": {
+      "near": "Arthur's Seat",
+      "categories": ["drinking_water", "viewpoint", "cafe"],
+      "start_time": "10:00"
+    }
+  }
+]

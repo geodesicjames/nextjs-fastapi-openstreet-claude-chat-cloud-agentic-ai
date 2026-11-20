@@ -99,3 +99,77 @@ class RunDetail(RunOut):
             **RunOut.model_validate(run).model_dump(),
             steps=[StepOut.from_step(s) for s in steps],
         )
+
+
+# --- Admin: full traces -------------------------------------------------------------
+
+TOKEN_FIELDS = (
+    "input_tokens",
+    "output_tokens",
+    "cache_read_input_tokens",
+    "cache_creation_input_tokens",
+)
+
+
+class AdminRunOut(RunOut):
+    """A run in the admin list: whose it is and which model ran it."""
+
+    user_email: str
+    model: str
+
+    @classmethod
+    def from_run(cls, run: AgentRun, user_email: str) -> "AdminRunOut":
+        return cls(
+            **RunOut.model_validate(run).model_dump(), user_email=user_email, model=run.model
+        )
+
+
+class TraceStepOut(BaseModel):
+    """One step exactly as stored, which is exactly what the model saw.
+
+    `data` is the stored step (see AgentStep in app/models/agent.py), with
+    thinking signatures and encrypted thinking left out: they are opaque
+    bytes that only matter when replaying the conversation to the API.
+    """
+
+    seq: int
+    kind: str
+    created_at: datetime
+    duration_ms: int | None
+    cost_usd: float | None
+    data: dict[str, Any]
+
+    @classmethod
+    def from_step(cls, step: AgentStep) -> "TraceStepOut":
+        data = step.data
+        if step.kind == StepKind.MODEL:
+            data = {**data, "content": [_readable_block(b) for b in data["content"]]}
+        return cls(
+            seq=step.seq,
+            kind=step.kind,
+            created_at=step.created_at,
+            duration_ms=step.duration_ms,
+            cost_usd=float(step.cost_usd) if step.cost_usd is not None else None,
+            data=data,
+        )
+
+
+def _readable_block(block: dict[str, Any]) -> dict[str, Any]:
+    if block.get("type") == "redacted_thinking":
+        return {"type": "redacted_thinking"}
+    return {k: v for k, v in block.items() if k != "signature"}
+
+
+class RunTrace(AdminRunOut):
+    steps: list[TraceStepOut]
+    # Summed over the run's model calls.
+    tokens: dict[str, int]
+
+    @classmethod
+    def from_run_steps(cls, run: AgentRun, user_email: str, steps: list[AgentStep]) -> "RunTrace":
+        model_steps = [s.data for s in steps if s.kind == StepKind.MODEL]
+        return cls(
+            **AdminRunOut.from_run(run, user_email).model_dump(),
+            steps=[TraceStepOut.from_step(s) for s in steps],
+            tokens={f: sum(d.get(f) or 0 for d in model_steps) for f in TOKEN_FIELDS},
+        )

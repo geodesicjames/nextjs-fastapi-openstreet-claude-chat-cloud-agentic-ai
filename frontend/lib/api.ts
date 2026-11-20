@@ -12,6 +12,8 @@ import "server-only";
 
 import { cookies } from "next/headers";
 
+import type { Run } from "@/lib/agent";
+
 // Mirrors HealthOut in backend/app/schemas/health.py.
 export type Health = {
   status: "ok" | "degraded";
@@ -164,6 +166,42 @@ export type UsageReport = {
 /** Claude spend over the last `days` UTC days (admins only; null otherwise). */
 export function getUsageReport(days: number): Promise<UsageReport | null> {
   return getJson<UsageReport>(`/admin/usage?days=${days}`);
+}
+
+// --- Agent runs (admins) ------------------------------------------------------------
+
+// Mirrors AdminRunOut in backend/app/schemas/agent.py.
+export type AdminRun = Run & { user_email: string; model: string };
+
+// Mirrors TraceStepOut: the step as stored, i.e. what the model saw.
+export type TraceStep = {
+  seq: number;
+  kind: "goal" | "model" | "tool" | "check" | "feedback" | "nudge";
+  created_at: string;
+  duration_ms: number | null;
+  cost_usd: number | null;
+  data: Record<string, unknown>;
+};
+
+export type RunTrace = AdminRun & {
+  steps: TraceStep[];
+  /** Summed over the run's model calls. */
+  tokens: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens: number;
+    cache_creation_input_tokens: number;
+  };
+};
+
+/** Everyone's recent agent runs (admins only; null otherwise). */
+export function getAgentRuns(): Promise<AdminRun[] | null> {
+  return getJson<AdminRun[]>("/admin/agent/runs");
+}
+
+/** One run with every step (admins only; null otherwise, or if there's no such run). */
+export function getAgentRunTrace(id: string): Promise<RunTrace | null> {
+  return getJson<RunTrace>(`/admin/agent/runs/${encodeURIComponent(id)}`);
 }
 
 // --- Proxy for browser-side calls ----------------------------------------------------
