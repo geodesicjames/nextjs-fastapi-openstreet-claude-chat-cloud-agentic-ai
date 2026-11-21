@@ -1,4 +1,5 @@
-"""Admin endpoints: review access requests, manage chat grants, see Claude spend.
+"""Admin endpoints: review access requests, manage chat grants, see Claude spend,
+and read agent runs step by step.
 
 Every route depends on `AdminUser` (401 if signed out, 403 if not an admin).
 """
@@ -8,13 +9,16 @@ from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
+from sqlalchemy import select
 
 from app.config import Settings, get_settings
 from app.deps import AdminUser, DbSession
-from app.models import AccessRequest, AccessRequestStatus, ChatGrant
+from app.models import AccessRequest, AccessRequestStatus, AgentRun, ChatGrant, User
 from app.schemas.access import AccessRequestOut, ApproveIn, GrantOut, GrantUpdate
+from app.schemas.agent import AdminRunOut, RunTrace
 from app.schemas.usage import UsageReportOut
 from app.services import access_requests as service
+from app.services import agent as agent_service
 from app.services import auth as auth_service
 from app.services.chat_access import GrantConflictError
 from app.services.email import EmailSender, get_email_sender
@@ -187,3 +191,37 @@ async def get_usage(
     """Claude spend for the last `days` UTC days (today included): totals, per
     day (every day, zeros included), per user and per model."""
     return UsageReportOut.from_report(await usage_report(db, days))
+
+
+# --- Agent runs ------------------------------------------------------------------
+
+
+@router.get("/agent/runs", response_model=list[AdminRunOut])
+async def list_agent_runs(
+    db: DbSession, admin: AdminUser, limit: Annotated[int, Query(ge=1, le=200)] = 50
+) -> list[AdminRunOut]:
+    """Everyone's agent runs, newest first."""
+    rows = await db.execute(
+        select(AgentRun, User.email)
+        .join(User, User.id == AgentRun.user_id)
+        .order_by(AgentRun.created_at.desc())
+        .limit(limit)
+    )
+    return [AdminRunOut.from_run(run, email) for run, email in rows]
+
+
+@router.get("/agent/runs/{run_id}", response_model=RunTrace)
+async def get_agent_run_trace(run_id: uuid.UUID, db: DbSession, admin: AdminUser) -> RunTrace:
+    """One run with every step as stored: model calls with their tokens and cost,
+    tool calls with the exact output the model was given, checks and feedback."""
+    row = (
+        await db.execute(
+            select(AgentRun, User.email)
+            .join(User, User.id == AgentRun.user_id)
+            .where(AgentRun.id == run_id)
+        )
+    ).first()
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Run not found.")
+    run, email = row
+    return RunTrace.from_run_steps(run, email, await agent_service.load_steps(db, run))

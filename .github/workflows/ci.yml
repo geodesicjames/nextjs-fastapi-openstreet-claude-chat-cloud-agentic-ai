@@ -66,6 +66,11 @@ jobs:
       - name: Tests (pytest)
         run: uv run pytest
 
+      # Free: a scripted model plans every eval goal through the real agent
+      # loop and check, so agent changes can't silently break the eval.
+      - name: Trip planner eval (dry run, no Claude calls)
+        run: uv run python -m evals.trip_planner.run_eval --dry-run
+
   frontend:
     name: Frontend (lint, types, build)
     runs-on: ubuntu-latest

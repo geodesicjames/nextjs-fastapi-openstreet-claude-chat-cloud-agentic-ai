@@ -7,7 +7,8 @@
 
 Each run:
 - recreates a throwaway database (<your DB name>_eval) and loads
-  fixture.json.gz into it, so every run sees identical map data;
+  fixture.json.gz into it, so every run sees identical map data
+  (see evals/common.py, shared with the trip planner eval);
 - calls the app's real entry point, `chat.stream_reply`, with the real
   Claude model and the real tools. Only the external services are stubbed:
   Overpass (the fixture's cells are fresh; anything outside them reports
@@ -29,163 +30,72 @@ grader, cases, fixture) changed since you last approved them with
 
 import argparse
 import asyncio
-import gzip
-import hashlib
 import json
-import math
-import os
 import random
 import sys
 import time
 import uuid
-from dataclasses import dataclass, field
-from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import make_url
+# First: points the app at the eval database before app.db is imported.
+from evals.common import (
+    HILLCLIMB,
+    FixtureOverpass,
+    GazetteerNominatim,
+    Harness,
+    append_row,
+    done_keys,
+    gazetteer_coords,
+    get_settings,
+    load_fixture,
+    load_fixture_file,
+    migrate,
+    read_rows,
+    recreate_database,
+    wilson,
+)
 
-BACKEND = Path(__file__).resolve().parents[2]
+# isort: split
+import anthropic  # noqa: E402
+import httpx  # noqa: E402
+
+from app.db import SessionLocal, engine  # noqa: E402
+from app.models import ChatGrant, Place, User  # noqa: E402
+from app.services import chat as chat_service  # noqa: E402
+from app.services.chat_access import get_chat_status  # noqa: E402
+from app.services.chat_tools import ToolContext  # noqa: E402
+from app.services.llm import AnthropicChatModel, ModelReply  # noqa: E402
+from app.services.pricing import PRICES, TokenUsage, cost_usd  # noqa: E402
+from evals.chat_tools.grade import ToolCall, grade_tool_use, judge_grounded  # noqa: E402
+
 HERE = Path(__file__).resolve().parent
-FLOW_DIR = BACKEND.parent / ".claude" / "hillclimb" / "chat-tools"
-HARNESS_FILES = [
-    HERE / "run_eval.py",
-    HERE / "grade.py",
-    HERE / "cases.json",
-    HERE / "fixture.json.gz",
-]
-
-
-# --- Point the app at the eval database before it is imported ----------------------------
-# (app.db builds its engine from settings at import time, as in tests/conftest.py)
-
-
-def _eval_database_url() -> str:
-    from app.config import get_settings
-
-    url = make_url(str(get_settings().database_url))
-    return url.set(database=f"{url.database}_eval").render_as_string(hide_password=False)
-
-
-os.environ["DATABASE_URL"] = _eval_database_url()
-from app.config import get_settings
-
-get_settings.cache_clear()
-
-import anthropic
-import httpx
-from alembic.config import Config
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-
-from alembic import command
-from app.db import SessionLocal, engine
-from app.models import ChatGrant, Place, PlaceCell, User
-from app.services import chat as chat_service
-from app.services.chat_access import get_chat_status
-from app.services.chat_tools import ToolContext
-from app.services.geocoding import NominatimClient
-from app.services.grid import BBox
-from app.services.llm import AnthropicChatModel, ModelReply
-from app.services.overpass import OverpassClient, OverpassUnavailableError
-from app.services.pricing import PRICES, TokenUsage, cost_usd
-from evals.chat_tools.grade import ToolCall, grade_tool_use, judge_grounded
-
-# --- Harness gate ---------------------------------------------------------------------------
-
-
-def harness_sha() -> str:
-    digest = hashlib.sha256()
-    for path in HARNESS_FILES:
-        digest.update(path.name.encode())
-        digest.update(hashlib.sha256(path.read_bytes()).digest())
-    return digest.hexdigest()
-
-
-def state_path() -> Path:
-    return FLOW_DIR / "_state.json"
-
-
-def load_state() -> dict[str, Any]:
-    path = state_path()
-    return json.loads(path.read_text()) if path.exists() else {}
-
-
-def write_state(state: dict[str, Any]) -> None:
-    FLOW_DIR.mkdir(parents=True, exist_ok=True)
-    state_path().write_text(json.dumps(state, indent=2) + "\n")
-
-
-DEFAULT_STATE = {
-    "harness_paths": [str(p.relative_to(BACKEND.parent)) for p in HARNESS_FILES],
-    "metrics": [
-        {"id": "tool_use", "kind": "binary", "label": "Tool use"},
-        {"id": "grounded", "kind": "binary", "label": "Grounded"},
+FLOW_DIR = HILLCLIMB / "chat-tools"
+HARNESS = Harness(
+    FLOW_DIR,
+    [
+        HERE / "run_eval.py",
+        HERE / "grade.py",
+        HERE / "cases.json",
+        HERE / "fixture.json.gz",
+        HERE.parent / "common.py",
     ],
-    "perf_fields": [
-        {"id": "latency_s", "label": "Latency", "unit": "s"},
-        {"id": "tool_calls", "label": "Tool calls"},
-        {"id": "cost_usd", "label": "Cost", "unit": "$"},
-    ],
-}
+    {
+        "metrics": [
+            {"id": "tool_use", "kind": "binary", "label": "Tool use"},
+            {"id": "grounded", "kind": "binary", "label": "Grounded"},
+        ],
+        "perf_fields": [
+            {"id": "latency_s", "label": "Latency", "unit": "s"},
+            {"id": "tool_calls", "label": "Tool calls"},
+            {"id": "cost_usd", "label": "Cost", "unit": "$"},
+        ],
+    },
+)
 
 
-# --- Database for the run -------------------------------------------------------------------
-
-
-async def recreate_database() -> None:
-    url = make_url(os.environ["DATABASE_URL"])
-    assert url.database and url.database.endswith("_eval"), url.database
-    admin = create_async_engine(url.set(database="postgres"), isolation_level="AUTOCOMMIT")
-    async with admin.connect() as conn:
-        await conn.execute(text(f'DROP DATABASE IF EXISTS "{url.database}" WITH (FORCE)'))
-        await conn.execute(text(f'CREATE DATABASE "{url.database}"'))
-    await admin.dispose()
-
-
-async def load_fixture(fixture: dict[str, Any]) -> None:
-    now = datetime.now(UTC)
-    async with SessionLocal() as db:
-        db.add_all(PlaceCell(ix=ix, iy=iy, fetched_at=now) for ix, iy in fixture["cells"])
-        db.add_all(
-            Place(
-                osm_type=p["osm_type"],
-                osm_id=p["osm_id"],
-                name=p["name"],
-                category=p["category"],
-                tags=p["tags"],
-                geom=f"SRID=4326;POINT({p['lon']} {p['lat']})",
-                fetched_at=now,
-            )
-            for p in fixture["places"]
-        )
-        await db.commit()
-
-
-# --- Stubs for the external services ---------------------------------------------------------
-
-
-@dataclass
-class FixtureOverpass(OverpassClient):
-    """No live Overpass: areas outside the fixture report missing data."""
-
-    async def fetch(self, db: Any, settings: Any, bbox: BBox) -> list[Any]:
-        raise OverpassUnavailableError("upstream_error")
-
-
-@dataclass
-class GazetteerNominatim(NominatimClient):
-    """No live Nominatim: answers from the fixture's gazetteer."""
-
-    gazetteer: list[dict[str, Any]] = field(default_factory=list)
-
-    async def search(self, db: Any, settings: Any, query: str) -> list[dict[str, Any]]:
-        q = query.lower()
-        for entry in self.gazetteer:
-            if any(alias in q for alias in entry["aliases"]):
-                return entry["results"]
-        return []
+# --- The model, recorded ----------------------------------------------------------------------
 
 
 class RecordingModel:
@@ -342,20 +252,6 @@ async def run_case(
 # --- The run -----------------------------------------------------------------------------------
 
 
-def _append(path: Path, row: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as f:
-        f.write(json.dumps(row, ensure_ascii=False, default=str) + "\n")
-
-
-def _done_keys(results: Path) -> set[tuple[str, int]]:
-    if not results.exists():
-        return set()
-    return {
-        (r["prompt_id"], r["rep"]) for r in map(json.loads, results.read_text().splitlines()) if r
-    }
-
-
 def row_cost(row: dict[str, Any]) -> float:
     """Derived when reporting (not stored): model + judge, from usage and prices."""
 
@@ -370,26 +266,13 @@ def row_cost(row: dict[str, Any]) -> float:
     )
 
 
-def wilson(passes: float, n: int) -> tuple[float, float]:
-    if n == 0:
-        return (0.0, 0.0)
-    z, p = 1.96, passes / n
-    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
-    return (max(0.0, centre - half), min(1.0, centre + half))
-
-
 async def run(args: argparse.Namespace) -> int:
     cases = json.loads((HERE / "cases.json").read_text())
     if args.cases:
         wanted = set(args.cases.split(","))
         cases = [c for c in cases if c["id"] in wanted]
-    fixture = json.loads(gzip.decompress((HERE / "fixture.json.gz").read_bytes()))
-    gazetteer = {
-        alias: (e["results"][0]["lat"], e["results"][0]["lon"])
-        for e in fixture["gazetteer"]
-        for alias in e["aliases"]
-    }
+    fixture = load_fixture_file()
+    gazetteer = gazetteer_coords(fixture)
 
     # "The Meadows" / "Arthur's Seat" as written in cases: map to the gazetteer.
     def coords(name: str) -> tuple[float, float]:
@@ -404,7 +287,7 @@ async def run(args: argparse.Namespace) -> int:
 
     variant_dir = FLOW_DIR / args.variant
     results_path, errors_path = variant_dir / "results.jsonl", variant_dir / "errors.jsonl"
-    done = _done_keys(results_path)
+    done = done_keys(results_path)
     todo = [(c, rep) for c in cases for rep in range(args.reps) if (c["id"], rep) not in done]
     print(
         f"{len(todo)} attempts to run ({len(done)} already done) "
@@ -447,7 +330,7 @@ async def run(args: argparse.Namespace) -> int:
                         if isinstance(error, AttemptError)
                         else "judge_error"
                     )
-                    _append(
+                    append_row(
                         errors_path,
                         {
                             "prompt_id": case["id"],
@@ -508,7 +391,7 @@ async def run(args: argparse.Namespace) -> int:
                 },
             }
             row["cost_usd"] = round(row_cost(row), 6)
-            _append(results_path, row)
+            append_row(results_path, row)
             marks = "".join("✓" if v else "✗" for v in row["grade"].values())
             print(
                 f"  {case['id']} rep {rep}: {marks}  "
@@ -523,11 +406,7 @@ async def run(args: argparse.Namespace) -> int:
 
     # Summary from the raw rows (all reps of the requested cases, including resumed ones).
     ids = {c["id"] for c in cases}
-    rows = (
-        [r for r in map(json.loads, results_path.read_text().splitlines()) if r["prompt_id"] in ids]
-        if results_path.exists()
-        else []
-    )
+    rows = [r for r in read_rows(results_path) if r["prompt_id"] in ids]
     scored = [r for r in rows if r["status"] == "ok"]
     print(
         f"\n{len(rows)} rows ({len(rows) - len(scored)} truncated, excluded); "
@@ -580,7 +459,7 @@ async def regrade(args: argparse.Namespace) -> int:
     """
     variant_dir = FLOW_DIR / args.variant
     results_path = variant_dir / "results.jsonl"
-    rows = [json.loads(line) for line in results_path.read_text().splitlines() if line]
+    rows = read_rows(results_path)
     key = get_settings().anthropic_api_key
     if key is None:
         print("ANTHROPIC_API_KEY is not set.", file=sys.stderr)
@@ -654,13 +533,10 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    state = {**DEFAULT_STATE, **load_state()}
     if args.approve_harness:
-        state["harness_sha"] = harness_sha()
-        write_state(state)
-        print(f"Approved harness {state['harness_sha'][:12]} ({', '.join(state['harness_paths'])})")
+        print(HARNESS.approve())
         return 0
-    if state.get("harness_sha") != harness_sha():
+    if not HARNESS.approved():
         print(
             "The eval's runner, grader, cases or fixture changed since they were last approved.\n"
             "Review the changes, then run:\n"
@@ -678,8 +554,8 @@ def main() -> int:
     # Fresh database with the fixture loaded. Migrations run outside the event
     # loop (alembic's env.py starts its own).
     asyncio.run(recreate_database())
-    command.upgrade(Config(str(BACKEND / "alembic.ini")), "head")
-    fixture = json.loads(gzip.decompress((HERE / "fixture.json.gz").read_bytes()))
+    migrate()
+    fixture = load_fixture_file()
 
     async def go() -> int:
         await load_fixture(fixture)
