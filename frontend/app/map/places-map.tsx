@@ -729,7 +729,7 @@ function PlaceCard({
   const website = safeHttpUrl(tags.website ?? tags["contact:website"]);
 
   return (
-    <section className="flex flex-col gap-2 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
+    <section className="flex flex-col gap-1.5 rounded-lg border border-neutral-200 p-3 text-sm dark:border-neutral-800">
       <div className="flex items-start justify-between gap-2">
         <div>
           <h2 className="font-medium">{place.properties.name ?? "Unnamed place"}</h2>
@@ -776,21 +776,23 @@ function PlaceCard({
           </>
         )}
       </dl>
-      <a
-        href={place.properties.osm_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="text-xs text-neutral-500 underline"
-      >
-        View on OpenStreetMap
-      </a>
-      <button
-        type="button"
-        onClick={onTellMeMore}
-        className="self-start rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-white dark:text-neutral-900"
-      >
-        Tell me more
-      </button>
+      <div className="flex items-center justify-between gap-2">
+        <a
+          href={place.properties.osm_url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-neutral-500 underline"
+        >
+          View on OpenStreetMap
+        </a>
+        <button
+          type="button"
+          onClick={onTellMeMore}
+          className="shrink-0 rounded-md bg-neutral-900 px-2 py-1 text-xs text-white dark:bg-white dark:text-neutral-900"
+        >
+          Tell me more
+        </button>
+      </div>
     </section>
   );
 }
