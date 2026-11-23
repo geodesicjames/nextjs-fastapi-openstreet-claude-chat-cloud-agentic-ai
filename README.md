@@ -244,7 +244,19 @@ conversation's title moves to the next question. Claude's thinking blocks
 are signed against the whole conversation before them, so removing a turn
 from the middle would make the API reject every later one. Deleting a turn
 therefore also strips the thinking blocks from the rest of the conversation.
-The visible answers stay, and the prompt cache restarts once. Tests use a scripted fake model. One
+The visible answers stay, and the prompt cache restarts once.
+
+**The conversation list.** Conversations are a stack of rows, like an
+accordion. Clicking a row opens that conversation, with its message box,
+beneath it; clicking it again closes it and opens a new conversation at the
+top. The × at the end of a row deletes the whole conversation
+(`DELETE /chat/conversations/{id}`). Its messages go with it, but its usage
+rows stay, so the day's spend still counts. Deleting a conversation's last
+question deletes the conversation too, and the list leaves out
+conversations with no saved messages (for example one whose first message
+failed).
+
+Tests use a scripted fake model. One
 opt-in test calls the real API for a fraction of a cent:
 `RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.
 

@@ -1,10 +1,15 @@
 // The "Ask" tab: chat with Claude about places. Replies stream in as they
 // are written; tool steps show as short status lines; places Claude finds
 // are handed to the map (onPlaces) to show as markers.
+//
+// Conversations are a stack of rows, one per conversation, like an
+// accordion: clicking a row opens that conversation (and its message box)
+// beneath it, and only one is open at a time. The top row is a new
+// conversation, open whenever no saved one is.
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { type FormEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type Access,
@@ -86,11 +91,13 @@ export function ChatPanel({
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
 
-  async function openConversation(id: string) {
+  /** Open a saved conversation, or (null) a new one. */
+  async function openConversation(id: string | null) {
     setProblem(null);
     if (!id) {
       setConversationId(null);
       setMessages([]);
+      setFolded(new Set());
       return;
     }
     const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`);
@@ -130,8 +137,21 @@ export function ChatPanel({
     );
     if (!res.ok) return setProblem(await errorText(res));
     const gone = new Set([turn.question.key, ...turn.replies.map((m) => m.key)]);
-    setMessages((current) => current.filter((m) => !gone.has(m.key)));
+    const left = messages.filter((m) => !gone.has(m.key));
+    if (left.some((m) => m.role === "user")) setMessages(left);
+    else void openConversation(null); // that was the last question: the conversation is gone
     void refreshConversations(); // the title may have been that question
+  }
+
+  async function deleteConversation(conversation: ConversationSummary) {
+    if (!window.confirm(`Delete “${conversation.title}” and everything in it?`)) return;
+    setProblem(null);
+    const res = await fetch(`/api/chat/conversations/${encodeURIComponent(conversation.id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) return setProblem(await errorText(res));
+    if (conversation.id === conversationId) void openConversation(null);
+    setConversations((current) => current.filter((c) => c.id !== conversation.id));
   }
 
   // Apply a change to the assistant message being streamed (always the last).
@@ -218,30 +238,9 @@ export function ChatPanel({
   }
   const outOfBudget = access.info.reason === "budget_exhausted";
 
-  return (
-    <div className="flex min-h-0 flex-1 flex-col gap-3">
-      <div className="flex items-center gap-2 text-sm">
-        <label htmlFor="conversation" className="sr-only">
-          Conversation
-        </label>
-        <select
-          id="conversation"
-          value={conversationId ?? ""}
-          onChange={(e) => void openConversation(e.target.value)}
-          className="min-w-0 flex-1 truncate rounded-md border border-neutral-300 bg-transparent px-2 py-1 dark:border-neutral-700"
-        >
-          <option value="">New conversation</option>
-          {conversations.map((c) => (
-            <option key={c.id} value={c.id}>
-              {c.title}
-            </option>
-          ))}
-        </select>
-        <span className="shrink-0 text-xs text-neutral-500" title="Left of today's chat budget">
-          {formatUsd(access.info.remaining_usd)} left
-        </span>
-      </div>
-
+  // The open conversation: its questions and answers, then the message box.
+  const openBody = (
+    <div className="flex flex-col gap-3 p-3">
       <div className="flex flex-col gap-3 text-sm" aria-live="polite">
         {messages.length === 0 && (
           <p className="text-neutral-500">
@@ -351,10 +350,109 @@ export function ChatPanel({
           {pending ? "Answering…" : "Send"}
         </button>
       </form>
+    </div>
+  );
+
+  // A conversation that was just started isn't in the list until its first
+  // reply is saved; until then it stays in the top row.
+  const openIsListed = conversations.some((c) => c.id === conversationId);
+  const firstQuestion = messages.find((m) => m.role === "user")?.text;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col gap-3">
+      <p className="self-end text-xs text-neutral-500" title="Left of today's chat budget">
+        {formatUsd(access.info.remaining_usd)} left
+      </p>
+
+      <ul
+        aria-label="Conversations"
+        className="flex flex-col divide-y divide-neutral-300 rounded-md border border-neutral-300 dark:divide-neutral-700 dark:border-neutral-700"
+      >
+        <ConversationRow
+          title={
+            !openIsListed && conversationId
+              ? (firstQuestion ?? "New conversation")
+              : "+ New conversation"
+          }
+          open={!openIsListed}
+          disabled={pending}
+          onToggle={() => void openConversation(null)}
+        >
+          {!openIsListed && openBody}
+        </ConversationRow>
+        {conversations.map((c) => {
+          const open = c.id === conversationId;
+          return (
+            <ConversationRow
+              key={c.id}
+              title={c.title}
+              open={open}
+              disabled={pending}
+              onToggle={() => void openConversation(open ? null : c.id)}
+              onDelete={() => void deleteConversation(c)}
+            >
+              {open && openBody}
+            </ConversationRow>
+          );
+        })}
+      </ul>
+
       <p className="text-xs text-neutral-500">
         Answers come from OpenStreetMap data and may be out of date.
       </p>
     </div>
+  );
+}
+
+/** One row of the conversation stack: a button that opens or closes it, an
+ * optional delete button, and (when open) the conversation beneath. */
+function ConversationRow({
+  title,
+  open,
+  disabled,
+  onToggle,
+  onDelete,
+  children,
+}: {
+  title: string;
+  open: boolean;
+  disabled: boolean;
+  onToggle: () => void;
+  onDelete?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <li>
+      <div
+        className={`flex items-center text-sm ${open ? "bg-neutral-100 dark:bg-neutral-800" : ""}`}
+      >
+        <button
+          type="button"
+          onClick={onToggle}
+          disabled={disabled}
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-neutral-800"
+        >
+          <span aria-hidden className="shrink-0 text-xs text-neutral-500">
+            {open ? "▾" : "▸"}
+          </span>
+          <span className={`truncate ${open ? "font-medium" : ""}`}>{title}</span>
+        </button>
+        {onDelete && (
+          <button
+            type="button"
+            onClick={onDelete}
+            disabled={disabled}
+            aria-label={`Delete conversation: ${title}`}
+            title="Delete conversation"
+            className="shrink-0 self-stretch px-3 text-neutral-400 hover:text-red-600 disabled:invisible"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {children}
+    </li>
   );
 }
 
