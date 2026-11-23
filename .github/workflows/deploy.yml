@@ -102,7 +102,17 @@ jobs:
             image="$registry/$PROJECT-$name:$SHA"
             # Tags are immutable and named after the commit, so an image that
             # exists is exactly this code: reuse it (redeploys, rollbacks).
-            if docker manifest inspect "$image" > /dev/null 2>&1; then
+            # Ask ECR itself (the role may read images): `docker manifest
+            # inspect` misses BuildKit's multi-manifest images, and pushing over
+            # an existing tag fails.
+            found=$(aws ecr batch-get-image --repository-name "$PROJECT-$name" \
+              --image-ids imageTag="$SHA" \
+              --accepted-media-types application/vnd.oci.image.index.v1+json \
+                application/vnd.oci.image.manifest.v1+json \
+                application/vnd.docker.distribution.manifest.list.v2+json \
+                application/vnd.docker.distribution.manifest.v2+json \
+              --query 'length(images)' --output text)
+            if [ "$found" != 0 ]; then
               echo "$image already in ECR"
             else
               # The frontend's Sentry settings are written into its bundles
