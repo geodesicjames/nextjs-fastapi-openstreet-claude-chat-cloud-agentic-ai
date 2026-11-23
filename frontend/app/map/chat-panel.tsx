@@ -286,7 +286,9 @@ export function ChatPanel({
   }
   const outOfBudget = access.info.reason === "budget_exhausted";
 
-  // The open conversation: its questions and answers, then the message box.
+  const turns = toTurns(messages);
+
+  // The open conversation: its answers and later questions, then the message box.
   const openBody = (
     <div className="flex flex-col gap-3 p-3">
       <div className="flex flex-col gap-3 text-sm" aria-live="polite">
@@ -296,40 +298,64 @@ export function ChatPanel({
             near Bruntsfield?”. Places the assistant finds appear on the map.
           </p>
         )}
-        {toTurns(messages).map((turn) => {
+        {turns.map((turn, index) => {
           const { question } = turn;
-          const isFolded = folded.has(question.key);
+          // A lone question can't be folded: there'd be nothing left to show.
+          const isFolded = folded.has(question.key) && turns.length > 1;
+          const deleteButton = (
+            <button
+              type="button"
+              onClick={() => void deleteTurn(turn)}
+              disabled={!question.id || pending}
+              aria-label="Delete question and answer"
+              title="Delete question and answer"
+              className="shrink-0 rounded px-1 text-neutral-400 hover:text-red-600 disabled:invisible"
+            >
+              ×
+            </button>
+          );
           return (
             <div key={question.key} className="flex flex-col gap-2">
-              <div className="flex items-start gap-1.5 self-end">
-                <button
-                  type="button"
-                  onClick={() => toggleFold(question.key)}
-                  aria-expanded={!isFolded}
-                  aria-label={isFolded ? "Show answer" : "Hide answer"}
-                  title={isFolded ? "Show answer" : "Hide answer"}
-                  className="mt-2 shrink-0 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
-                >
-                  {isFolded ? "▸" : "▾"}
-                </button>
-                <p
-                  className={`rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800 ${
-                    isFolded ? "line-clamp-1 break-all" : "whitespace-pre-wrap"
-                  }`}
-                >
-                  {question.text}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void deleteTurn(turn)}
-                  disabled={!question.id || pending}
-                  aria-label="Delete question and answer"
-                  title="Delete question and answer"
-                  className="mt-1.5 shrink-0 rounded px-1 text-neutral-400 hover:text-red-600 disabled:invisible"
-                >
-                  ×
-                </button>
-              </div>
+              {index === 0 ? (
+                // The first question is the row's heading, so it isn't
+                // repeated here. With later questions below, its answer
+                // still folds and can be deleted on its own.
+                turns.length > 1 && (
+                  <div className="flex items-center justify-between text-xs text-neutral-500">
+                    <button
+                      type="button"
+                      onClick={() => toggleFold(question.key)}
+                      aria-expanded={!isFolded}
+                      aria-label={isFolded ? "Show answer" : "Hide answer"}
+                      className="hover:text-neutral-900 dark:hover:text-white"
+                    >
+                      {isFolded ? "▸" : "▾"} First answer
+                    </button>
+                    {deleteButton}
+                  </div>
+                )
+              ) : (
+                <div className="flex items-start gap-1.5 self-end">
+                  <button
+                    type="button"
+                    onClick={() => toggleFold(question.key)}
+                    aria-expanded={!isFolded}
+                    aria-label={isFolded ? "Show answer" : "Hide answer"}
+                    title={isFolded ? "Show answer" : "Hide answer"}
+                    className="mt-2 shrink-0 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+                  >
+                    {isFolded ? "▸" : "▾"}
+                  </button>
+                  <p
+                    className={`rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800 ${
+                      isFolded ? "line-clamp-1 break-all" : "whitespace-pre-wrap"
+                    }`}
+                  >
+                    {question.text}
+                  </p>
+                  <span className="mt-1.5">{deleteButton}</span>
+                </div>
+              )}
               {!isFolded &&
                 turn.replies.map((m) => (
                   <div key={m.key} className="flex flex-col gap-1.5">
@@ -407,12 +433,9 @@ export function ChatPanel({
   // A conversation that was just started isn't in the list until its first
   // reply is saved; until then it stays in the top row.
   const openIsListed = conversations.some((c) => c.id === conversationId);
-  // An open row doesn't repeat its title: that's the first question, shown
-  // just below it. It says how many questions there are instead.
-  const questionCount = messages.filter((m) => m.role === "user").length;
-  const openLabel = questionCount
-    ? `${questionCount} question${questionCount === 1 ? "" : "s"}`
-    : "New conversation";
+  // An open row's heading is its first question in full (the title is a
+  // shortened copy); the question isn't repeated below it.
+  const openLabel = turns[0]?.question.text ?? "New conversation";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -490,12 +513,13 @@ function ConversationRow({
           disabled={disabled}
           aria-expanded={open}
           title={title}
-          className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-neutral-800"
+          className="flex min-w-0 flex-1 items-baseline gap-2 px-3 py-2 text-left hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-neutral-800"
         >
           <span aria-hidden className="shrink-0 text-xs text-neutral-500">
             {open ? "▾" : "▸"}
           </span>
-          <span className={`truncate ${open ? "font-medium" : ""}`}>{label}</span>
+          {/* Open, the heading is the first question: show all of it. */}
+          <span className={open ? "font-medium break-words" : "truncate"}>{label}</span>
         </button>
         {onDelete && (
           <button
