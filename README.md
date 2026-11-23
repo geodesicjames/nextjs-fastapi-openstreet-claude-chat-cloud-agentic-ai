@@ -248,8 +248,9 @@ The visible answers stay, and the prompt cache restarts once.
 
 **The conversation list.** Conversations are a stack of rows, like an
 accordion. Clicking a row opens that conversation, with its message box,
-beneath it (an open row shows how many questions it has, rather than
-repeating the first question just below it); clicking it again closes it and opens a new conversation at the
+beneath it (an open row's heading is its first question, which isn't
+repeated below; with later questions, its answer folds behind a small
+"First answer" line); clicking it again closes it and opens a new conversation at the
 top. The × at the end of a row deletes the whole conversation
 (`DELETE /chat/conversations/{id}`). Its messages go with it, but its usage
 rows stay, so the day's spend still counts. Deleting a conversation's last
