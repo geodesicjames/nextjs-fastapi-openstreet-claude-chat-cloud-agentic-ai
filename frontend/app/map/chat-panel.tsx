@@ -10,6 +10,9 @@
 // A **bold** name in an answer that matches a place found while writing it
 // is a link: it shows the place on the map and starts a new conversation
 // about it, with the question typed in but not sent (sending costs money).
+//
+// The place card's "Tell me more" button sends a question straight away
+// (the `ask` prop): a new conversation, asked as soon as the panel can.
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -60,11 +63,16 @@ function toTurns(messages: Message[]): Turn[] {
 
 const MAX_CHARS = 2000; // mirrors CHAT_MAX_MESSAGE_CHARS
 
+/** A question to send in a new conversation; a new `id` asks again. */
+export type AskRequest = { id: number; text: string };
+
 export function ChatPanel({
+  ask,
   onPlaces,
   onShowPlace,
   getMapView,
 }: {
+  ask: AskRequest | null;
   onPlaces: (places: ChatPlace[]) => void;
   /** Show one place on the map (a linked name was clicked). */
   onShowPlace: (place: ChatPlace) => void;
@@ -206,14 +214,22 @@ export function ChatPanel({
   const updateLast = (change: (m: Message) => Message) =>
     setMessages((current) => [...current.slice(0, -1), change(current[current.length - 1])]);
 
-  async function send(event: FormEvent<HTMLFormElement>) {
+  function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const text = draft.trim();
+    void sendQuestion(draft.trim(), false);
+  }
+
+  /** Send a question, in the open conversation or (fresh) a new one. */
+  async function sendQuestion(text: string, fresh: boolean) {
     if (!text || pending) return;
     setPending(true);
     setProblem(null);
+    if (fresh) {
+      setConversationId(null);
+      setMessages([]);
+    }
 
-    let id = conversationId;
+    let id = fresh ? null : conversationId;
     if (!id) {
       const res = await fetch("/api/chat/conversations", { method: "POST" });
       if (!res.ok) {
@@ -228,7 +244,9 @@ export function ChatPanel({
     const stamp = Date.now();
     const questionKey = `u${stamp}`;
     // Fold the earlier questions, so the new answer is what's on screen.
-    setFolded(new Set(messages.filter((m) => m.role === "user").map((m) => m.key)));
+    setFolded(
+      fresh ? new Set() : new Set(messages.filter((m) => m.role === "user").map((m) => m.key)),
+    );
     setMessages((current) => [
       ...current,
       { key: questionKey, role: "user", text, tools: [], places: [] },
@@ -280,6 +298,19 @@ export function ChatPanel({
       router.refresh(); // update the header's budget badge
     }
   }
+
+  // A "Tell me more" request: send it once, when the panel is free to (it may
+  // still be loading access, or finishing another answer).
+  const handledAsk = useRef(0);
+  useEffect(() => {
+    if (!ask || ask.id === handledAsk.current || pending) return;
+    if (!canUseAssistant(access) || access.info.reason === "budget_exhausted") return;
+    handledAsk.current = ask.id;
+    void sendQuestion(ask.text, true);
+    // sendQuestion is a new function each render; ask, access and pending
+    // are what decide whether to send.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ask, access, pending]);
 
   if (!canUseAssistant(access)) {
     return <AccessNotice access={access} purpose="ask the assistant about places" />;

@@ -267,6 +267,14 @@ stay plain. When a conversation is reopened, each answer comes back with the
 places from its turn's tool results (`places` on the message), so the links
 survive a reload.
 
+**"Tell me more" on a place.** The card that opens when you click a place on
+the map has a **Tell me more** button. It switches to the Ask tab and sends
+"Tell me more about {name}." in a new conversation straight away: clicking
+the button is the decision to ask. The place stays selected, so the map view
+sent with the question gives the assistant its `place_id` to look up. If the
+panel is still loading or finishing another answer, the question waits and is
+sent once it's free.
+
 Tests use a scripted fake model. One
 opt-in test calls the real API for a fraction of a cent:
 `RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.

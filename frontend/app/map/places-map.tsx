@@ -29,7 +29,7 @@ import {
 import type { TripPlan } from "@/lib/agent";
 import { type ChatPlace, distanceM, type MapView } from "@/lib/chat";
 
-import { ChatPanel } from "./chat-panel";
+import { type AskRequest, ChatPanel } from "./chat-panel";
 import { PlannerPanel } from "./planner-panel";
 import { SavedPanel } from "./saved-panel";
 
@@ -84,6 +84,7 @@ export function PlacesMap() {
   const [status, setStatus] = useState<Status>({ kind: "loading" });
   const [selected, setSelected] = useState<PlaceDetail | null>(null);
   const [tab, setTab] = useState<Tab>("explore");
+  const [askRequest, setAskRequest] = useState<AskRequest | null>(null);
   // Places the assistant found, shown as their own, larger markers.
   const [chatPlaces, setChatPlaces] = useState<ChatPlace[]>([]);
   // The trip planner's itinerary: numbered markers joined by a line. Also
@@ -399,7 +400,22 @@ export function PlacesMap() {
             </button>
           ))}
         </div>
-        {selected && <PlaceCard place={selected} onClose={() => setSelected(null)} />}
+        {selected && (
+          <PlaceCard
+            place={selected}
+            onClose={() => setSelected(null)}
+            onTellMeMore={() => {
+              const name = selected.properties.name;
+              // The place stays selected, so the question's map view names
+              // it (with its place_id) for the assistant to look up.
+              setAskRequest((current) => ({
+                id: (current?.id ?? 0) + 1,
+                text: name ? `Tell me more about ${name}.` : "Tell me more about this place.",
+              }));
+              setTab("ask");
+            }}
+          />
+        )}
 
         {/* Panels stay mounted when hidden, so a conversation survives
             switching tabs. */}
@@ -411,6 +427,7 @@ export function PlacesMap() {
           className="flex flex-col gap-4"
         >
           <ChatPanel
+            ask={askRequest}
             onPlaces={setChatPlaces}
             onShowPlace={(place) => {
               mapRef.current?.flyTo({ center: [place.lon, place.lat], zoom: 16 });
@@ -697,7 +714,16 @@ const DETAIL_TAGS: [string, string][] = [
   ["phone", "Phone"],
 ];
 
-function PlaceCard({ place, onClose }: { place: PlaceDetail; onClose: () => void }) {
+function PlaceCard({
+  place,
+  onClose,
+  onTellMeMore,
+}: {
+  place: PlaceDetail;
+  onClose: () => void;
+  /** Ask the assistant about this place (in the Ask tab). */
+  onTellMeMore: () => void;
+}) {
   const { tags } = place.properties;
   const address = [tags["addr:housenumber"], tags["addr:street"]].filter(Boolean).join(" ");
   const website = safeHttpUrl(tags.website ?? tags["contact:website"]);
@@ -758,6 +784,13 @@ function PlaceCard({ place, onClose }: { place: PlaceDetail; onClose: () => void
       >
         View on OpenStreetMap
       </a>
+      <button
+        type="button"
+        onClick={onTellMeMore}
+        className="self-start rounded-md bg-neutral-900 px-3 py-1.5 text-sm text-white dark:bg-white dark:text-neutral-900"
+      >
+        Tell me more
+      </button>
     </section>
   );
 }
