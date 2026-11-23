@@ -13,6 +13,7 @@ import {
   describeTool,
   errorText,
   fetchAccess,
+  type MapView,
   readEvents,
   type StoredMessage,
 } from "@/lib/chat";
@@ -33,7 +34,14 @@ type Message = {
 
 const MAX_CHARS = 2000; // mirrors CHAT_MAX_MESSAGE_CHARS
 
-export function ChatPanel({ onPlaces }: { onPlaces: (places: ChatPlace[]) => void }) {
+export function ChatPanel({
+  onPlaces,
+  getMapView,
+}: {
+  onPlaces: (places: ChatPlace[]) => void;
+  /** Read when a message is sent; null before the map has loaded. */
+  getMapView: () => MapView | null;
+}) {
   const router = useRouter();
   const [access, setAccess] = useState<Access>({ kind: "loading" });
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
@@ -111,7 +119,7 @@ export function ChatPanel({ onPlaces }: { onPlaces: (places: ChatPlace[]) => voi
       const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}/messages`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ text }),
+        body: JSON.stringify({ text, map: getMapView() }),
       });
       if (!res.ok || !res.body) {
         const message = await errorText(res);

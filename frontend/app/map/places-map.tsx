@@ -27,7 +27,7 @@ import {
   type PlaceFeature,
 } from "@/lib/map";
 import type { TripPlan } from "@/lib/agent";
-import type { ChatPlace } from "@/lib/chat";
+import { type ChatPlace, distanceM, type MapView } from "@/lib/chat";
 
 import { ChatPanel } from "./chat-panel";
 import { PlannerPanel } from "./planner-panel";
@@ -90,6 +90,20 @@ export function PlacesMap() {
   // kept in a ref, in case it arrives before the map has finished loading.
   const [tripPlan, setTripPlan] = useState<TripPlan | null>(null);
   const tripPlanRef = useRef<TripPlan | null>(null);
+
+  // What the chat is told the user is looking at, read as each message is sent.
+  const getMapView = useCallback((): MapView | null => {
+    const map = mapRef.current;
+    if (!map) return null;
+    const centre = map.getCenter();
+    const corner = map.getBounds().getNorthEast();
+    return {
+      lat: centre.lat,
+      lon: centre.lng,
+      radius_m: Math.max(1, Math.round(distanceM(centre.lat, centre.lng, corner.lat, corner.lng))),
+      selected_place_id: selected?.id ?? null,
+    };
+  }, [selected]);
 
   // These callbacks read state through refs, so they never go stale and can
   // be registered once as MapLibre event listeners.
@@ -396,7 +410,7 @@ export function PlacesMap() {
           hidden={tab !== "ask"}
           className="flex flex-col gap-4"
         >
-          <ChatPanel onPlaces={setChatPlaces} />
+          <ChatPanel onPlaces={setChatPlaces} getMapView={getMapView} />
         </div>
         <div
           role="tabpanel"
