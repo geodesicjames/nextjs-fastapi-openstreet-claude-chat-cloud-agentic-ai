@@ -407,7 +407,12 @@ export function ChatPanel({
   // A conversation that was just started isn't in the list until its first
   // reply is saved; until then it stays in the top row.
   const openIsListed = conversations.some((c) => c.id === conversationId);
-  const firstQuestion = messages.find((m) => m.role === "user")?.text;
+  // An open row doesn't repeat its title: that's the first question, shown
+  // just below it. It says how many questions there are instead.
+  const questionCount = messages.filter((m) => m.role === "user").length;
+  const openLabel = questionCount
+    ? `${questionCount} question${questionCount === 1 ? "" : "s"}`
+    : "New conversation";
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3">
@@ -420,11 +425,8 @@ export function ChatPanel({
         className="flex flex-col divide-y divide-neutral-300 rounded-md border border-neutral-300 dark:divide-neutral-700 dark:border-neutral-700"
       >
         <ConversationRow
-          title={
-            !openIsListed && conversationId
-              ? (firstQuestion ?? "New conversation")
-              : "+ New conversation"
-          }
+          title="New conversation"
+          label={openIsListed ? "+ New conversation" : openLabel}
           open={!openIsListed}
           disabled={pending}
           onToggle={() => void openConversation(null)}
@@ -437,6 +439,7 @@ export function ChatPanel({
             <ConversationRow
               key={c.id}
               title={c.title}
+              label={open ? openLabel : c.title}
               open={open}
               disabled={pending}
               onToggle={() => void openConversation(open ? null : c.id)}
@@ -459,13 +462,17 @@ export function ChatPanel({
  * optional delete button, and (when open) the conversation beneath. */
 function ConversationRow({
   title,
+  label,
   open,
   disabled,
   onToggle,
   onDelete,
   children,
 }: {
+  /** The conversation's title (for the delete button and tooltip). */
   title: string;
+  /** What the row shows. */
+  label: string;
   open: boolean;
   disabled: boolean;
   onToggle: () => void;
@@ -482,12 +489,13 @@ function ConversationRow({
           onClick={onToggle}
           disabled={disabled}
           aria-expanded={open}
+          title={title}
           className="flex min-w-0 flex-1 items-center gap-2 px-3 py-2 text-left hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-60 dark:hover:bg-neutral-800"
         >
           <span aria-hidden className="shrink-0 text-xs text-neutral-500">
             {open ? "▾" : "▸"}
           </span>
-          <span className={`truncate ${open ? "font-medium" : ""}`}>{title}</span>
+          <span className={`truncate ${open ? "font-medium" : ""}`}>{label}</span>
         </button>
         {onDelete && (
           <button
