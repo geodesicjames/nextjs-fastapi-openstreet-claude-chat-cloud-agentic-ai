@@ -4,32 +4,34 @@
 // with no dependency to add.
 import { Fragment, type ReactNode } from "react";
 
-function inline(text: string): ReactNode[] {
+/** Renders a **bold** run differently (e.g. as a link); null for plain bold. */
+export type RenderStrong = (text: string) => ReactNode | null;
+
+function inline(text: string, renderStrong?: RenderStrong): ReactNode[] {
   // Split on **bold** runs; odd indexes are the bold parts.
-  return text
-    .split(/\*\*(.+?)\*\*/g)
-    .map((part, i) =>
-      i % 2 === 1 ? <strong key={i}>{part}</strong> : <Fragment key={i}>{part}</Fragment>,
-    );
+  return text.split(/\*\*(.+?)\*\*/g).map((part, i) => {
+    if (i % 2 === 0) return <Fragment key={i}>{part}</Fragment>;
+    return <Fragment key={i}>{renderStrong?.(part) ?? <strong>{part}</strong>}</Fragment>;
+  });
 }
 
 const BULLET = /^\s*[-*]\s+(.*)$/;
 const NUMBERED = /^\s*\d+[.)]\s+(.*)$/;
 
-export function Markdown({ text }: { text: string }) {
+export function Markdown({ text, renderStrong }: { text: string; renderStrong?: RenderStrong }) {
   const blocks: ReactNode[] = [];
   let list: { ordered: boolean; items: string[] } | null = null;
   let paragraph: string[] = [];
 
   const flushParagraph = () => {
     if (paragraph.length) {
-      blocks.push(<p key={blocks.length}>{inline(paragraph.join(" "))}</p>);
+      blocks.push(<p key={blocks.length}>{inline(paragraph.join(" "), renderStrong)}</p>);
       paragraph = [];
     }
   };
   const flushList = () => {
     if (list) {
-      const items = list.items.map((item, i) => <li key={i}>{inline(item)}</li>);
+      const items = list.items.map((item, i) => <li key={i}>{inline(item, renderStrong)}</li>);
       blocks.push(
         list.ordered ? (
           <ol key={blocks.length} className="list-decimal pl-5">

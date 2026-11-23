@@ -6,6 +6,10 @@
 // accordion: clicking a row opens that conversation (and its message box)
 // beneath it, and only one is open at a time. The top row is a new
 // conversation, open whenever no saved one is.
+//
+// A **bold** name in an answer that matches a place found while writing it
+// is a link: it shows the place on the map and starts a new conversation
+// about it, with the question typed in but not sent (sending costs money).
 "use client";
 
 import { useRouter } from "next/navigation";
@@ -19,6 +23,7 @@ import {
   errorText,
   fetchAccess,
   type MapView,
+  nameKey,
   readEvents,
   type StoredMessage,
 } from "@/lib/chat";
@@ -34,6 +39,8 @@ type Message = {
   role: "user" | "assistant";
   text: string;
   tools: ToolLine[];
+  /** For an answer: places found while writing it, for linking bold names. */
+  places: ChatPlace[];
   error?: string;
   /** A saved question's id (for deleting it); unset until the reply is saved. */
   id?: string;
@@ -55,9 +62,12 @@ const MAX_CHARS = 2000; // mirrors CHAT_MAX_MESSAGE_CHARS
 
 export function ChatPanel({
   onPlaces,
+  onShowPlace,
   getMapView,
 }: {
   onPlaces: (places: ChatPlace[]) => void;
+  /** Show one place on the map (a linked name was clicked). */
+  onShowPlace: (place: ChatPlace) => void;
   /** Read when a message is sent; null before the map has loaded. */
   getMapView: () => MapView | null;
 }) {
@@ -70,7 +80,10 @@ export function ChatPanel({
   const [problem, setProblem] = useState<string | null>(null);
   // Questions folded to one line (by message key), so a long chat stays short.
   const [folded, setFolded] = useState<Set<string>>(new Set());
+  const [draft, setDraft] = useState("");
+  const [focusTick, setFocusTick] = useState(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const refreshAccess = useCallback(() => fetchAccess().then(setAccess), []);
   const refreshConversations = useCallback(
@@ -91,6 +104,11 @@ export function ChatPanel({
     endRef.current?.scrollIntoView({ block: "end" });
   }, [messages]);
 
+  // After a linked name is clicked; the message box may have moved rows.
+  useEffect(() => {
+    if (focusTick) inputRef.current?.focus();
+  }, [focusTick]);
+
   /** Open a saved conversation, or (null) a new one. */
   async function openConversation(id: string | null) {
     setProblem(null);
@@ -108,6 +126,7 @@ export function ChatPanel({
       role: m.role,
       text: m.text,
       tools: [],
+      places: m.places,
       id: m.role === "user" ? m.id : undefined,
     }));
     setConversationId(id);
@@ -154,14 +173,42 @@ export function ChatPanel({
     setConversations((current) => current.filter((c) => c.id !== conversation.id));
   }
 
+  /** A linked name was clicked: show the place and start asking about it. */
+  function askAbout(place: ChatPlace) {
+    onShowPlace(place);
+    void openConversation(null);
+    setDraft(`Tell me more about ${place.name}.`);
+    setFocusTick((n) => n + 1);
+  }
+
+  /** Bold text in an answer: a link if it names one of the answer's places. */
+  function placeLinks(places: ChatPlace[]) {
+    if (!places.length) return undefined;
+    const byName = new Map(places.filter((p) => p.name).map((p) => [nameKey(p.name!), p]));
+    return function PlaceLink(text: string) {
+      const place = byName.get(nameKey(text));
+      if (!place) return null;
+      return (
+        <button
+          type="button"
+          onClick={() => askAbout(place)}
+          disabled={pending}
+          title={`Show ${place.name} on the map and ask about it`}
+          className="font-semibold underline decoration-dotted underline-offset-2 hover:text-blue-700 disabled:no-underline dark:hover:text-blue-400"
+        >
+          {text}
+        </button>
+      );
+    };
+  }
+
   // Apply a change to the assistant message being streamed (always the last).
   const updateLast = (change: (m: Message) => Message) =>
     setMessages((current) => [...current.slice(0, -1), change(current[current.length - 1])]);
 
   async function send(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = event.currentTarget;
-    const text = String(new FormData(form).get("text") ?? "").trim();
+    const text = draft.trim();
     if (!text || pending) return;
     setPending(true);
     setProblem(null);
@@ -177,15 +224,15 @@ export function ChatPanel({
       setConversationId(id);
     }
 
-    form.reset();
+    setDraft("");
     const stamp = Date.now();
     const questionKey = `u${stamp}`;
     // Fold the earlier questions, so the new answer is what's on screen.
     setFolded(new Set(messages.filter((m) => m.role === "user").map((m) => m.key)));
     setMessages((current) => [
       ...current,
-      { key: questionKey, role: "user", text, tools: [] },
-      { key: `a${stamp}`, role: "assistant", text: "", tools: [] },
+      { key: questionKey, role: "user", text, tools: [], places: [] },
+      { key: `a${stamp}`, role: "assistant", text: "", tools: [], places: [] },
     ]);
 
     try {
@@ -212,6 +259,7 @@ export function ChatPanel({
             tools: m.tools.map((t, i) =>
               i === m.tools.length - 1 ? { ...t, summary: e.summary, ok: e.ok } : t,
             ),
+            places: [...m.places, ...e.places],
           }));
           if (e.places.length) onPlaces(e.places);
         } else if (e.type === "error") updateLast((m) => ({ ...m, error: e.message }));
@@ -292,7 +340,7 @@ export function ChatPanel({
                         {t.summary ? ` · ${t.summary}` : ""}
                       </p>
                     ))}
-                    {m.text && <Markdown text={m.text} />}
+                    {m.text && <Markdown text={m.text} renderStrong={placeLinks(m.places)} />}
                     {m.error && (
                       <p role="alert" className="text-red-600">
                         {m.error}
@@ -328,6 +376,9 @@ export function ChatPanel({
         <textarea
           id="chat-text"
           name="text"
+          ref={inputRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
           rows={2}
           maxLength={MAX_CHARS}
           required

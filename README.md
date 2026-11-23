@@ -256,6 +256,15 @@ question deletes the conversation too, and the list leaves out
 conversations with no saved messages (for example one whose first message
 failed).
 
+**Place names are links.** A **bold** name in an answer that matches a place
+the assistant found while writing it (by search or lookup) is a link.
+Clicking it shows the place on the map and starts a new conversation with
+"Tell me more about …" typed in, but not sent, since every question costs
+money. Only names of found places link, so bold labels like "Opening hours:"
+stay plain. When a conversation is reopened, each answer comes back with the
+places from its turn's tool results (`places` on the message), so the links
+survive a reload.
+
 Tests use a scripted fake model. One
 opt-in test calls the real API for a fraction of a cent:
 `RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.

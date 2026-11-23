@@ -410,7 +410,14 @@ export function PlacesMap() {
           hidden={tab !== "ask"}
           className="flex flex-col gap-4"
         >
-          <ChatPanel onPlaces={setChatPlaces} getMapView={getMapView} />
+          <ChatPanel
+            onPlaces={setChatPlaces}
+            onShowPlace={(place) => {
+              mapRef.current?.flyTo({ center: [place.lon, place.lat], zoom: 16 });
+              void selectPlace(place.place_id);
+            }}
+            getMapView={getMapView}
+          />
         </div>
         <div
           role="tabpanel"

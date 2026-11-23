@@ -354,6 +354,53 @@ async def test_message_length_limits(
     assert fake_model.calls == []
 
 
+async def test_answers_come_back_with_the_places_their_tools_found(
+    client: AsyncClient, db: AsyncSession, chatter: User, fake_model: FakeChatModel
+) -> None:
+    place = Place(
+        osm_type="node",
+        osm_id=1802,
+        name="1802 Lounge",
+        category="restaurant",
+        tags={"name": "1802 Lounge"},
+        geom="SRID=4326;POINT(-3.18 55.95)",
+        fetched_at=datetime.now(UTC),
+    )
+    db.add(place)
+    await db.commit()
+    fake_model.replies += [
+        wants_tools(
+            tool_use("get_place_details", {"place_id": str(place.id)}),
+            tool_use("get_place_details", {"place_id": str(uuid.uuid4())}, id="toolu_2"),
+        ),
+        reply("**1802 Lounge** is a restaurant."),
+        reply("No tools this time."),
+    ]
+    conversation_id = await new_conversation(client)
+    await send(client, conversation_id, "Tell me about 1802 Lounge")
+    await send(client, conversation_id, "Thanks")
+
+    detail = (await client.get(f"/chat/conversations/{conversation_id}")).json()
+    # The unknown place_id was an error result: it adds nothing.
+    assert [(m["text"], m["places"]) for m in detail["messages"]] == [
+        ("Tell me about 1802 Lounge", []),
+        (
+            "**1802 Lounge** is a restaurant.",
+            [
+                {
+                    "place_id": str(place.id),
+                    "name": "1802 Lounge",
+                    "category": "restaurant",
+                    "lat": pytest.approx(55.95),
+                    "lon": pytest.approx(-3.18),
+                }
+            ],
+        ),
+        ("Thanks", []),
+        ("No tools this time.", []),  # places belong to the turn that found them
+    ]
+
+
 # --- Map view -------------------------------------------------------------------------
 
 
