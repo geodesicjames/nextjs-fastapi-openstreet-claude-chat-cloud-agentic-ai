@@ -18,6 +18,14 @@ refusal mid-tool-call, budget running out) the messages are dropped but the
 usage of every call already made is still logged. History is append-only:
 rows are never edited, so the replayed prefix stays byte-for-byte identical
 (required for replayed thinking blocks, and what makes prompt caching hit).
+
+The one exception is deleting a turn (`delete_turn`), when a user wants the
+assistant to forget a question. Each thinking block's signature is bound to
+the conversation before it, so removing a turn from the middle would make
+the API reject every later thinking block. Deleting a turn therefore also
+strips the thinking blocks from the rest of the conversation, which the API
+accepts. The visible answers stay; the next reply just can't see the
+assistant's earlier reasoning, and the prompt cache restarts once.
 """
 
 import logging
@@ -26,7 +34,7 @@ from collections.abc import AsyncIterator
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 from anthropic.types import MessageParam
 from sqlalchemy import select
@@ -108,6 +116,8 @@ class TextEvent:
 @dataclass(frozen=True)
 class DoneEvent:
     message_id: uuid.UUID | None
+    # The question's id, for deleting this turn later; None if nothing was saved.
+    user_message_id: uuid.UUID | None
     stop_reason: str | None
     # True when the reply hit max_tokens and was cut off.
     truncated: bool
@@ -200,6 +210,52 @@ def visible_text(message: ChatMessage) -> str:
     )
 
 
+def is_question(message: ChatMessage) -> bool:
+    """A message the user typed (as opposed to tool results, also sent as "user")."""
+    return message.role == "user" and bool(visible_text(message))
+
+
+THINKING_BLOCKS = {"thinking", "redacted_thinking"}
+
+
+async def delete_turn(
+    db: AsyncSession, conversation: Conversation, message_id: uuid.UUID
+) -> Literal["deleted", "not_found", "busy"]:
+    """Delete one question and everything the assistant did to answer it.
+
+    "not_found" if `message_id` isn't one of this conversation's questions;
+    "busy" while a reply is being written (the turn holds the lock).
+    """
+    if not await _lock(db, conversation):
+        return "busy"
+    messages = await load_messages(db, conversation)
+    start = next((i for i, m in enumerate(messages) if m.id == message_id and is_question(m)), None)
+    if start is None:
+        await db.rollback()  # release the lock
+        return "not_found"
+    end = next(
+        (i for i in range(start + 1, len(messages)) if is_question(messages[i])), len(messages)
+    )
+    for message in messages[start:end]:
+        await db.delete(message)
+
+    remaining = messages[:start] + messages[end:]
+    # See the module docstring: without this, the next reply would fail.
+    for message in remaining:
+        if message.role == "assistant" and any(
+            b.get("type") in THINKING_BLOCKS for b in message.content
+        ):
+            message.content = [b for b in message.content if b.get("type") not in THINKING_BLOCKS]
+
+    # The title is the first question: don't keep showing a deleted one.
+    first = next((m for m in remaining if is_question(m)), None)
+    conversation.title = (
+        visible_text(first).strip()[:TITLE_LENGTH] if first else "New conversation"
+    ) or "New conversation"
+    await db.commit()
+    return "deleted"
+
+
 # --- Map view ---------------------------------------------------------------------------
 
 MAP_VIEW_TAG = "<map_view>"
@@ -280,7 +336,11 @@ async def stream_reply(
         await db.commit()
         yield ErrorEvent(code, message)
         yield DoneEvent(
-            message_id=None, stop_reason=None, truncated=False, cost_usd=float(total_cost)
+            message_id=None,
+            user_message_id=None,
+            stop_reason=None,
+            truncated=False,
+            cost_usd=float(total_cost),
         )
 
     while True:
@@ -372,8 +432,9 @@ async def stream_reply(
         if tool_steps >= settings.chat_max_tool_steps:
             answer_now = True  # one more call, with tools disabled
 
-    # Save the whole turn.
-    seq = len(history)
+    # Save the whole turn. After the last stored row, not at len(history):
+    # deleted turns leave gaps in seq.
+    seq = history[-1].seq + 1 if history else 0
     rows = [
         ChatMessage(conversation_id=conversation.id, seq=seq + i, role=role, content=content)
         for i, (role, content) in enumerate(turn)
@@ -389,6 +450,7 @@ async def stream_reply(
         yield ErrorEvent("refused", "Sorry, I can't help with that request.")
     yield DoneEvent(
         message_id=rows[-1].id,
+        user_message_id=rows[0].id,
         stop_reason=reply.stop_reason,
         truncated=reply.stop_reason == "max_tokens",
         cost_usd=float(total_cost),

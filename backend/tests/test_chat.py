@@ -20,7 +20,15 @@ from app.models import ChatMessage, LlmUsage, Place, User
 from app.services import chat as chat_service
 from app.services.llm import ModelUnavailableError
 from app.services.pricing import TokenUsage
-from tests.chat_helpers import THINKING, FakeChatModel, new_conversation, reply, send
+from tests.chat_helpers import (
+    THINKING,
+    FakeChatModel,
+    new_conversation,
+    reply,
+    send,
+    tool_use,
+    wants_tools,
+)
 from tests.factories import grant, make_user, sign_in_as, signed_in_user
 
 # --- Access -------------------------------------------------------------------------
@@ -207,7 +215,16 @@ async def test_api_failure_saves_nothing(
                 "message": "The assistant is unavailable right now. Please try again.",
             },
         ),
-        ("done", {"message_id": None, "stop_reason": None, "truncated": False, "cost_usd": 0.0}),
+        (
+            "done",
+            {
+                "message_id": None,
+                "user_message_id": None,
+                "stop_reason": None,
+                "truncated": False,
+                "cost_usd": 0.0,
+            },
+        ),
     ]
     assert await db.scalar(select(func.count()).select_from(ChatMessage)) == 0
     assert await db.scalar(select(func.count()).select_from(LlmUsage)) == 0
@@ -362,3 +379,105 @@ async def test_map_view_is_validated(
     )
     assert response.status_code == 422
     assert fake_model.calls == []
+
+
+# --- Deleting a question -----------------------------------------------------------------
+
+
+async def ask(client: AsyncClient, conversation_id: str, text: str) -> str:
+    """Send a message; return the saved question's id."""
+    events = await send(client, conversation_id, text)
+    done = events[-1][1]
+    assert done["user_message_id"], events
+    return done["user_message_id"]
+
+
+async def test_delete_turn_forgets_the_question_and_its_answer(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel
+) -> None:
+    lookup = tool_use("get_place_details", {"place_id": str(uuid.uuid4())})
+    fake_model.replies += [
+        reply("Answer one."),
+        wants_tools(lookup),  # the middle question uses a tool: several rows
+        reply("Answer two."),
+        reply("Answer three."),
+        reply("Answer four."),
+    ]
+    conversation_id = await new_conversation(client)
+    await ask(client, conversation_id, "Question one")
+    second = await ask(client, conversation_id, "Question two")
+    await ask(client, conversation_id, "Question three")
+
+    response = await client.delete(f"/chat/conversations/{conversation_id}/messages/{second}")
+    assert response.status_code == 204
+
+    detail = (await client.get(f"/chat/conversations/{conversation_id}")).json()
+    assert [m["text"] for m in detail["messages"]] == [
+        "Question one",
+        "Answer one.",
+        "Question three",
+        "Answer three.",
+    ]
+
+    # The next reply sees neither the question nor its tool call, and no
+    # thinking blocks (their signatures were bound to the deleted turn).
+    await ask(client, conversation_id, "Question four")
+    sent = fake_model.calls[-1]["messages"]
+    assert sent == [
+        {"role": "user", "content": [{"type": "text", "text": "Question one"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "Answer one."}]},
+        {"role": "user", "content": [{"type": "text", "text": "Question three"}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "Answer three."}]},
+        {"role": "user", "content": [{"type": "text", "text": "Question four"}]},
+    ]
+    # Saved after the last row, despite the gap the deletion left.
+    detail = (await client.get(f"/chat/conversations/{conversation_id}")).json()
+    assert detail["messages"][-1]["text"] == "Answer four."
+
+
+async def test_deleting_the_first_question_changes_the_title(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel
+) -> None:
+    fake_model.replies += [reply("One."), reply("Two.")]
+    conversation_id = await new_conversation(client)
+    first = await ask(client, conversation_id, "Where is 1802 Lounge?")
+    second = await ask(client, conversation_id, "Any parks nearby?")
+
+    await client.delete(f"/chat/conversations/{conversation_id}/messages/{first}")
+    [listed] = (await client.get("/chat/conversations")).json()
+    assert listed["title"] == "Any parks nearby?"
+
+    await client.delete(f"/chat/conversations/{conversation_id}/messages/{second}")
+    [listed] = (await client.get("/chat/conversations")).json()
+    assert listed["title"] == "New conversation"
+
+
+async def test_delete_turn_only_accepts_your_own_questions(
+    client: AsyncClient,
+    db: AsyncSession,
+    chatter: User,
+    fake_model: FakeChatModel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_model.replies.append(reply("Answer."))
+    conversation_id = await new_conversation(client)
+    question = await ask(client, conversation_id, "Question")
+    answer = (await client.get(f"/chat/conversations/{conversation_id}")).json()["messages"][1]
+    url = f"/chat/conversations/{conversation_id}/messages"
+
+    # An answer, or an id that isn't in the conversation, isn't a question.
+    assert (await client.delete(f"{url}/{answer['id']}")).status_code == 404
+    assert (await client.delete(f"{url}/{uuid.uuid4()}")).status_code == 404
+
+    # While a reply is being written, the turn holds the lock.
+    async def locked(*_: Any) -> bool:
+        return False
+
+    with monkeypatch.context() as patched:
+        patched.setattr(chat_service, "_lock", locked)
+        assert (await client.delete(f"{url}/{question}")).status_code == 409
+
+    # Someone else can't delete it.
+    other = await make_user(db, "other@example.com")
+    await sign_in_as(db, client, other)
+    assert (await client.delete(f"{url}/{question}")).status_code == 404

@@ -30,7 +30,21 @@ type Message = {
   text: string;
   tools: ToolLine[];
   error?: string;
+  /** A saved question's id (for deleting it); unset until the reply is saved. */
+  id?: string;
 };
+
+/** A question and the replies to it, shown and folded together. */
+type Turn = { question: Message; replies: Message[] };
+
+function toTurns(messages: Message[]): Turn[] {
+  const turns: Turn[] = [];
+  for (const m of messages) {
+    if (m.role === "user") turns.push({ question: m, replies: [] });
+    else turns[turns.length - 1]?.replies.push(m);
+  }
+  return turns;
+}
 
 const MAX_CHARS = 2000; // mirrors CHAT_MAX_MESSAGE_CHARS
 
@@ -49,6 +63,8 @@ export function ChatPanel({
   const [messages, setMessages] = useState<Message[]>([]);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // Questions folded to one line (by message key), so a long chat stays short.
+  const [folded, setFolded] = useState<Set<string>>(new Set());
   const endRef = useRef<HTMLDivElement>(null);
 
   const refreshAccess = useCallback(() => fetchAccess().then(setAccess), []);
@@ -80,8 +96,42 @@ export function ChatPanel({
     const res = await fetch(`/api/chat/conversations/${encodeURIComponent(id)}`);
     if (!res.ok) return setProblem("Couldn't open that conversation.");
     const detail = (await res.json()) as { messages: StoredMessage[] };
+    const loaded: Message[] = detail.messages.map((m) => ({
+      key: m.id,
+      role: m.role,
+      text: m.text,
+      tools: [],
+      id: m.role === "user" ? m.id : undefined,
+    }));
     setConversationId(id);
-    setMessages(detail.messages.map((m) => ({ key: m.id, role: m.role, text: m.text, tools: [] })));
+    setMessages(loaded);
+    // Show only the latest question's answer; fold the rest.
+    const questions = loaded.filter((m) => m.role === "user").map((m) => m.key);
+    setFolded(new Set(questions.slice(0, -1)));
+  }
+
+  function toggleFold(key: string) {
+    setFolded((current) => {
+      const next = new Set(current);
+      if (!next.delete(key)) next.add(key);
+      return next;
+    });
+  }
+
+  async function deleteTurn(turn: Turn) {
+    const questionId = turn.question.id;
+    if (!conversationId || !questionId) return;
+    if (!window.confirm("Delete this question and its answer? The assistant will forget them."))
+      return;
+    setProblem(null);
+    const res = await fetch(
+      `/api/chat/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(questionId)}`,
+      { method: "DELETE" },
+    );
+    if (!res.ok) return setProblem(await errorText(res));
+    const gone = new Set([turn.question.key, ...turn.replies.map((m) => m.key)]);
+    setMessages((current) => current.filter((m) => !gone.has(m.key)));
+    void refreshConversations(); // the title may have been that question
   }
 
   // Apply a change to the assistant message being streamed (always the last).
@@ -109,9 +159,12 @@ export function ChatPanel({
 
     form.reset();
     const stamp = Date.now();
+    const questionKey = `u${stamp}`;
+    // Fold the earlier questions, so the new answer is what's on screen.
+    setFolded(new Set(messages.filter((m) => m.role === "user").map((m) => m.key)));
     setMessages((current) => [
       ...current,
-      { key: `u${stamp}`, role: "user", text, tools: [] },
+      { key: questionKey, role: "user", text, tools: [] },
       { key: `a${stamp}`, role: "assistant", text: "", tools: [] },
     ]);
 
@@ -142,6 +195,12 @@ export function ChatPanel({
           }));
           if (e.places.length) onPlaces(e.places);
         } else if (e.type === "error") updateLast((m) => ({ ...m, error: e.message }));
+        else if (e.type === "done" && e.user_message_id) {
+          const questionId = e.user_message_id;
+          setMessages((current) =>
+            current.map((m) => (m.key === questionKey ? { ...m, id: questionId } : m)),
+          );
+        }
       }
     } catch (error) {
       console.error(error);
@@ -190,36 +249,65 @@ export function ChatPanel({
             near Bruntsfield?”. Places the assistant finds appear on the map.
           </p>
         )}
-        {messages.map((m) =>
-          m.role === "user" ? (
-            <p
-              key={m.key}
-              className="self-end rounded-lg bg-neutral-100 px-3 py-2 whitespace-pre-wrap dark:bg-neutral-800"
-            >
-              {m.text}
-            </p>
-          ) : (
-            <div key={m.key} className="flex flex-col gap-1.5">
-              {m.tools.map((t, i) => (
-                <p key={i} className="text-xs text-neutral-500">
-                  {t.summary === null ? "⋯ " : t.ok ? "✓ " : "✕ "}
-                  {t.label}
-                  {t.summary ? ` · ${t.summary}` : ""}
+        {toTurns(messages).map((turn) => {
+          const { question } = turn;
+          const isFolded = folded.has(question.key);
+          return (
+            <div key={question.key} className="flex flex-col gap-2">
+              <div className="flex items-start gap-1.5 self-end">
+                <button
+                  type="button"
+                  onClick={() => toggleFold(question.key)}
+                  aria-expanded={!isFolded}
+                  aria-label={isFolded ? "Show answer" : "Hide answer"}
+                  title={isFolded ? "Show answer" : "Hide answer"}
+                  className="mt-2 shrink-0 text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white"
+                >
+                  {isFolded ? "▸" : "▾"}
+                </button>
+                <p
+                  className={`rounded-lg bg-neutral-100 px-3 py-2 dark:bg-neutral-800 ${
+                    isFolded ? "line-clamp-1 break-all" : "whitespace-pre-wrap"
+                  }`}
+                >
+                  {question.text}
                 </p>
-              ))}
-              {m.text && <Markdown text={m.text} />}
-              {m.error && (
-                <p role="alert" className="text-red-600">
-                  {m.error}
-                </p>
-              )}
-              {pending &&
-                m === messages[messages.length - 1] &&
-                !m.text &&
-                m.tools.length === 0 && <p className="text-neutral-500">Thinking…</p>}
+                <button
+                  type="button"
+                  onClick={() => void deleteTurn(turn)}
+                  disabled={!question.id || pending}
+                  aria-label="Delete question and answer"
+                  title="Delete question and answer"
+                  className="mt-1.5 shrink-0 rounded px-1 text-neutral-400 hover:text-red-600 disabled:invisible"
+                >
+                  ×
+                </button>
+              </div>
+              {!isFolded &&
+                turn.replies.map((m) => (
+                  <div key={m.key} className="flex flex-col gap-1.5">
+                    {m.tools.map((t, i) => (
+                      <p key={i} className="text-xs text-neutral-500">
+                        {t.summary === null ? "⋯ " : t.ok ? "✓ " : "✕ "}
+                        {t.label}
+                        {t.summary ? ` · ${t.summary}` : ""}
+                      </p>
+                    ))}
+                    {m.text && <Markdown text={m.text} />}
+                    {m.error && (
+                      <p role="alert" className="text-red-600">
+                        {m.error}
+                      </p>
+                    )}
+                    {pending &&
+                      m === messages[messages.length - 1] &&
+                      !m.text &&
+                      m.tools.length === 0 && <p className="text-neutral-500">Thinking…</p>}
+                  </div>
+                ))}
             </div>
-          ),
-        )}
+          );
+        })}
         <div ref={endRef} />
       </div>
 

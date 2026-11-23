@@ -233,7 +233,18 @@ into a short `<map_view>` note before the user's words, taking the place's
 name from the database. So "more details on 1802 Lounge", or "cafés near
 here", means the area on screen rather than anywhere in the world. Naming a
 town ("cafés in Leith") still works as before. The note is stored with the
-message, so replays are exact, but it's hidden from the transcript. Tests use a scripted fake model. One
+message, so replays are exact, but it's hidden from the transcript.
+
+**Folding and deleting questions.** In the Ask panel, earlier questions fold
+to one line when a new one is sent (▸/▾ toggles each one). × deletes a
+question and everything the assistant did to answer it:
+`DELETE /chat/conversations/{id}/messages/{question_id}`. The deleted text is
+removed from the database, so later replies can't see it, and the
+conversation's title moves to the next question. Claude's thinking blocks
+are signed against the whole conversation before them, so removing a turn
+from the middle would make the API reject every later one. Deleting a turn
+therefore also strips the thinking blocks from the rest of the conversation.
+The visible answers stay, and the prompt cache restarts once. Tests use a scripted fake model. One
 opt-in test calls the real API for a fraction of a cent:
 `RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.
 
@@ -416,6 +427,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Tests use a real PostGIS database** | Spatial behaviour can't be meaningfully faked with SQLite or mocks. |
 | **Server Components fetch via a `server-only` module** | `API_URL` and the session cookie never reach browser JavaScript. |
 | **Map view goes in the user's message, not the system prompt** | The system prompt stays byte-for-byte identical, so prompt caching keeps working whatever the map shows. Sending the view with every message, rather than only when no place is typed, avoids guessing what counts as a location. Claude decides, and an explicitly named town wins. |
+| **Deleting a question really deletes it, and strips later thinking** | "Forget this" should mean the assistant can't see it any more, not just that it's hidden. History is otherwise append-only, because Claude's thinking signatures bind each block to the conversation before it. Removing all thinking blocks is the documented way to keep the history valid after an edit. |
 | **Magic-link sign-in, no passwords** | Invited users (e.g. recruiters) never need to create a password, and there are no password hashes to protect. |
 | **Server-side sessions, not JWTs** | The cookie holds a random token and the DB stores only its SHA-256 hash. Sign-out and revocation take effect immediately, as with Django's DB sessions. A JWT can't be revoked before it expires without a server-side denylist. |
 | **Browser talks only to Next.js** | The session cookie belongs to the frontend's origin and Next.js forwards it to FastAPI server-side. No CORS, no cross-site cookies, and FastAPI can live on a private network in production. |
