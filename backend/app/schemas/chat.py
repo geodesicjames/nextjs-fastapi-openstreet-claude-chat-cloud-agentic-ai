@@ -46,13 +46,25 @@ class ConversationOut(BaseModel):
     updated_at: datetime
 
 
+class ChatPlaceOut(BaseModel):
+    """A place a tool found while answering (the tool_result event's places)."""
+
+    place_id: uuid.UUID
+    name: str | None
+    category: str
+    lat: float
+    lon: float
+
+
 class MessageOut(BaseModel):
-    """A message as people see it: just its text (no thinking or tool blocks)."""
+    """A message as people see it: its text (no thinking or tool blocks), and
+    for an answer, the places found while writing it."""
 
     id: uuid.UUID
     role: Literal["user", "assistant"]
     text: str
     created_at: datetime
+    places: list[ChatPlaceOut] = []
 
 
 class ConversationDetail(ConversationOut):

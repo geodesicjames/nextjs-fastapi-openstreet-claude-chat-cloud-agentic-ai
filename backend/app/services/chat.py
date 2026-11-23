@@ -28,6 +28,7 @@ accepts. The visible answers stay; the next reply just can't see the
 assistant's earlier reasoning, and the prompt cache restarts once.
 """
 
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator
@@ -219,6 +220,46 @@ def visible_text(message: ChatMessage) -> str:
 def is_question(message: ChatMessage) -> bool:
     """A message the user typed (as opposed to tool results, also sent as "user")."""
     return message.role == "user" and bool(visible_text(message))
+
+
+PLACE_FIELDS = ("place_id", "name", "category", "lat", "lon")
+
+
+def _places_in_result(block: dict[str, Any]) -> list[dict[str, Any]]:
+    """The places in a stored tool_result: search_places' list, or
+    get_place_details' one place. Anything else (errors, other tools) has none."""
+    if block.get("type") != "tool_result" or block.get("is_error"):
+        return []
+    try:
+        data = json.loads(block.get("content") or "")
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(data, dict):
+        return []
+    listed = data.get("places")
+    candidates: list[Any] = listed if isinstance(listed, list) else [data]
+    return [
+        {k: p[k] for k in PLACE_FIELDS}
+        for p in candidates
+        if isinstance(p, dict) and all(k in p for k in PLACE_FIELDS)
+    ]
+
+
+def places_by_answer(messages: list[ChatMessage]) -> dict[uuid.UUID, list[dict[str, Any]]]:
+    """For each answer (an assistant message with text), the places its turn's
+    tools found before it, so names in a reloaded answer can still link to them."""
+    out: dict[uuid.UUID, list[dict[str, Any]]] = {}
+    found: dict[str, dict[str, Any]] = {}  # by place_id, in the order found
+    for message in messages:
+        if is_question(message):
+            found = {}
+        elif message.role == "user":
+            for block in message.content:
+                for place in _places_in_result(block):
+                    found.setdefault(str(place["place_id"]), place)
+        elif visible_text(message) and found:
+            out[message.id] = list(found.values())
+    return out
 
 
 THINKING_BLOCKS = {"thinking", "redacted_thinking"}

@@ -24,6 +24,7 @@ from app.config import Settings, get_settings
 from app.deps import ChatAccess, CurrentUser, DbSession, StreamingDbSession, get_chat_model
 from app.schemas.chat import (
     ChatAccessOut,
+    ChatPlaceOut,
     ConversationDetail,
     ConversationOut,
     MessageIn,
@@ -73,6 +74,7 @@ async def get_conversation(
     if conversation is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found.")
     messages = await chat_service.load_messages(db, conversation)
+    places = chat_service.places_by_answer(messages)
     return ConversationDetail(
         id=conversation.id,
         title=conversation.title,
@@ -84,6 +86,7 @@ async def get_conversation(
                 role=m.role,  # pyright: ignore[reportArgumentType]  # "user" | "assistant" in the DB
                 text=chat_service.visible_text(m),
                 created_at=m.created_at,
+                places=[ChatPlaceOut.model_validate(p) for p in places.get(m.id, [])],
             )
             for m in messages
             # Tool calls and results have no text to show.

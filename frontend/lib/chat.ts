@@ -13,7 +13,13 @@ export type ChatAccessInfo = {
 
 export type ConversationSummary = { id: string; title: string; updated_at: string };
 
-export type StoredMessage = { id: string; role: "user" | "assistant"; text: string };
+export type StoredMessage = {
+  id: string;
+  role: "user" | "assistant";
+  text: string;
+  /** For an answer: the places its tools found (so names can link to them). */
+  places: ChatPlace[];
+};
 
 export type ChatPlace = {
   place_id: string;
@@ -35,6 +41,16 @@ export type MapView = {
   radius_m: number;
   selected_place_id: string | null;
 };
+
+/** For matching a **bold** name in an answer to a place: case, spacing and
+ * trailing punctuation don't matter. */
+export function nameKey(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/[\s.,:;!?]+$/, "")
+    .trim();
+}
 
 /** Great-circle distance in metres (haversine). */
 export function distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
