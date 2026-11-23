@@ -54,6 +54,8 @@ export type ChatEvent =
   | {
       type: "done";
       message_id: string | null;
+      /** The question's id, for deleting the turn; null if nothing was saved. */
+      user_message_id: string | null;
       stop_reason: string | null;
       truncated: boolean;
       cost_usd: number;

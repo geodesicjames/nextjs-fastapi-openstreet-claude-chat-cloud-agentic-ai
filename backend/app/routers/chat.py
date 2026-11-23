@@ -92,6 +92,30 @@ async def get_conversation(
     )
 
 
+@router.delete(
+    "/conversations/{conversation_id}/messages/{message_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_turn(
+    conversation_id: uuid.UUID, message_id: uuid.UUID, db: DbSession, user: CurrentUser
+) -> None:
+    """Delete a question and its answer, so the assistant forgets them.
+
+    Only signed in, not chat access: people can always remove what they
+    asked, even after their access ends.
+    """
+    conversation = await chat_service.get_conversation(db, user, conversation_id)
+    if conversation is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Conversation not found.")
+    result = await chat_service.delete_turn(db, conversation, message_id)
+    if result == "busy":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "Still answering. Try again when the reply has finished."
+        )
+    if result == "not_found":
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Question not found.")
+
+
 @router.post("/conversations/{conversation_id}/messages")
 async def send_message(
     conversation_id: uuid.UUID,
