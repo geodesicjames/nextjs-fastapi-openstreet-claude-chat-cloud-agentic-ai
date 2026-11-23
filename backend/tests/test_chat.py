@@ -282,6 +282,66 @@ async def test_list_is_most_recent_first(
     assert [c["id"] for c in listed] == [first, second]
 
 
+async def test_empty_conversations_are_not_listed(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel
+) -> None:
+    fake_model.replies.append(reply())
+    await new_conversation(client)  # never used
+    used = await new_conversation(client)
+    await send(client, used, "hi")
+
+    listed = (await client.get("/chat/conversations")).json()
+    assert [c["id"] for c in listed] == [used]
+
+
+async def test_delete_conversation(
+    client: AsyncClient, db: AsyncSession, chatter: User, fake_model: FakeChatModel
+) -> None:
+    fake_model.replies += [reply("One."), reply("Two.")]
+    kept = await new_conversation(client)
+    await send(client, kept, "Keep this")
+    doomed = await new_conversation(client)
+    await send(client, doomed, "Forget this")
+
+    response = await client.delete(f"/chat/conversations/{doomed}")
+
+    assert response.status_code == 204
+    assert [c["id"] for c in (await client.get("/chat/conversations")).json()] == [kept]
+    assert (await client.get(f"/chat/conversations/{doomed}")).status_code == 404
+    assert (await client.delete(f"/chat/conversations/{doomed}")).status_code == 404
+    # Its messages went with it; its usage stays, so today's spend still counts.
+    remaining = await db.scalars(select(ChatMessage.conversation_id))
+    assert {str(c) for c in remaining} == {kept}
+    usage = list(await db.scalars(select(LlmUsage.conversation_id)))
+    assert sorted(str(c) for c in usage) == sorted(["None", kept])
+
+
+async def test_delete_conversation_busy_and_private(
+    client: AsyncClient,
+    db: AsyncSession,
+    chatter: User,
+    fake_model: FakeChatModel,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_model.replies.append(reply())
+    conversation_id = await new_conversation(client)
+    await send(client, conversation_id, "hi")
+
+    async def locked(*_: Any) -> bool:
+        return False
+
+    with monkeypatch.context() as patched:
+        patched.setattr(chat_service, "_lock", locked)
+        assert (await client.delete(f"/chat/conversations/{conversation_id}")).status_code == 409
+
+    other = await make_user(db, "other@example.com")
+    await sign_in_as(db, client, other)
+    assert (await client.delete(f"/chat/conversations/{conversation_id}")).status_code == 404
+
+    await sign_in_as(db, client, chatter)
+    assert (await client.get("/chat/conversations")).json() != []
+
+
 @pytest.mark.parametrize("text", ["", "x" * 2_001])
 async def test_message_length_limits(
     client: AsyncClient, chatter: User, fake_model: FakeChatModel, text: str
@@ -441,15 +501,25 @@ async def test_deleting_the_first_question_changes_the_title(
     fake_model.replies += [reply("One."), reply("Two.")]
     conversation_id = await new_conversation(client)
     first = await ask(client, conversation_id, "Where is 1802 Lounge?")
-    second = await ask(client, conversation_id, "Any parks nearby?")
+    await ask(client, conversation_id, "Any parks nearby?")
 
     await client.delete(f"/chat/conversations/{conversation_id}/messages/{first}")
     [listed] = (await client.get("/chat/conversations")).json()
     assert listed["title"] == "Any parks nearby?"
 
-    await client.delete(f"/chat/conversations/{conversation_id}/messages/{second}")
-    [listed] = (await client.get("/chat/conversations")).json()
-    assert listed["title"] == "New conversation"
+
+async def test_deleting_the_last_question_deletes_the_conversation(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel
+) -> None:
+    fake_model.replies.append(reply("One."))
+    conversation_id = await new_conversation(client)
+    question = await ask(client, conversation_id, "Where is 1802 Lounge?")
+
+    response = await client.delete(f"/chat/conversations/{conversation_id}/messages/{question}")
+
+    assert response.status_code == 204
+    assert (await client.get("/chat/conversations")).json() == []
+    assert (await client.get(f"/chat/conversations/{conversation_id}")).status_code == 404
 
 
 async def test_delete_turn_only_accepts_your_own_questions(

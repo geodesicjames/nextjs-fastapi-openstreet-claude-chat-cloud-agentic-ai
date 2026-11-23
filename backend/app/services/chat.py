@@ -37,7 +37,7 @@ from decimal import Decimal
 from typing import Any, Literal, cast
 
 from anthropic.types import MessageParam
-from sqlalchemy import select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -170,10 +170,16 @@ async def create_conversation(db: AsyncSession, user: User) -> Conversation:
 
 
 async def list_conversations(db: AsyncSession, user: User) -> list[Conversation]:
+    """The user's conversations with at least one saved message.
+
+    An empty one (created, but its first message failed) isn't worth a row
+    in the list; the browser that created it can still send to it.
+    """
+    has_messages = exists().where(ChatMessage.conversation_id == Conversation.id)
     return list(
         await db.scalars(
             select(Conversation)
-            .where(Conversation.user_id == user.id)
+            .where(Conversation.user_id == user.id, has_messages)
             .order_by(Conversation.updated_at.desc())
         )
     )
@@ -218,13 +224,31 @@ def is_question(message: ChatMessage) -> bool:
 THINKING_BLOCKS = {"thinking", "redacted_thinking"}
 
 
+async def delete_conversation(
+    db: AsyncSession, conversation: Conversation
+) -> Literal["deleted", "busy"]:
+    """Delete a conversation and all its messages.
+
+    "busy" while a reply is being written. The messages go with it (ON DELETE
+    CASCADE in the database); the usage rows stay, with no conversation, so
+    the day's spend still counts.
+    """
+    if not await _lock(db, conversation):
+        return "busy"
+    await db.execute(delete(Conversation).where(Conversation.id == conversation.id))
+    await db.commit()
+    return "deleted"
+
+
 async def delete_turn(
     db: AsyncSession, conversation: Conversation, message_id: uuid.UUID
 ) -> Literal["deleted", "not_found", "busy"]:
     """Delete one question and everything the assistant did to answer it.
 
-    "not_found" if `message_id` isn't one of this conversation's questions;
-    "busy" while a reply is being written (the turn holds the lock).
+    Deleting the last question deletes the conversation too, rather than
+    leaving an empty one behind. "not_found" if `message_id` isn't one of
+    this conversation's questions; "busy" while a reply is being written
+    (the turn holds the lock).
     """
     if not await _lock(db, conversation):
         return "busy"
@@ -236,10 +260,14 @@ async def delete_turn(
     end = next(
         (i for i in range(start + 1, len(messages)) if is_question(messages[i])), len(messages)
     )
+    remaining = messages[:start] + messages[end:]
+    if not any(is_question(m) for m in remaining):
+        await db.execute(delete(Conversation).where(Conversation.id == conversation.id))
+        await db.commit()
+        return "deleted"
+
     for message in messages[start:end]:
         await db.delete(message)
-
-    remaining = messages[:start] + messages[end:]
     # See the module docstring: without this, the next reply would fail.
     for message in remaining:
         if message.role == "assistant" and any(
@@ -248,10 +276,8 @@ async def delete_turn(
             message.content = [b for b in message.content if b.get("type") not in THINKING_BLOCKS]
 
     # The title is the first question: don't keep showing a deleted one.
-    first = next((m for m in remaining if is_question(m)), None)
-    conversation.title = (
-        visible_text(first).strip()[:TITLE_LENGTH] if first else "New conversation"
-    ) or "New conversation"
+    first = next(m for m in remaining if is_question(m))
+    conversation.title = visible_text(first).strip()[:TITLE_LENGTH] or "New conversation"
     await db.commit()
     return "deleted"
 
