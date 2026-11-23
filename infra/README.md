@@ -100,6 +100,14 @@ environment.
 
 The role ARN isn't a secret, but keeping it on the environment ties it to the approval gate.
 
+The role trusts GitHub's token only if its `sub` claim names this repository's `production`
+environment. This repository uses GitHub's **immutable subjects**, which include the owner's and
+the repository's numeric IDs (`repo:owner@123/name@456:…`), so a deleted or renamed repository's
+name can't be reused to deploy. If you fork the project, set `github_subject_prefix` in
+`terraform.tfvars` to your repository's value:
+`gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix`. A mismatch shows
+up in the deploy job as `Not authorized to perform sts:AssumeRoleWithWebIdentity`.
+
 ## 6. Apply the app stack
 
 What it creates (about 40 resources; each file in `app/` starts with a comment explaining its part):

@@ -10,10 +10,16 @@ variable "project" {
   default     = "places"
 }
 
-variable "github_repo" {
-  description = "owner/name of the GitHub repository allowed to deploy."
+variable "github_subject_prefix" {
+  description = <<-EOT
+    How GitHub's OIDC tokens name the repository allowed to deploy: the start of their
+    `sub` claim. This repository uses GitHub's immutable subjects, which include the owner's
+    and the repository's numeric IDs as well as their names, so a deleted or renamed
+    repository's name can't be reused to deploy. Look it up with:
+      gh api repos/OWNER/REPO/actions/oidc/customization/sub --jq .sub_claim_prefix
+  EOT
   type        = string
-  default     = "geodesicjames/nextjs-fastapi-openstreet-claude-chat-cloud-agentic-ai"
+  default     = "repo:geodesicjames@29415856/nextjs-fastapi-openstreet-claude-chat-cloud-agentic-ai@1461866251"
 }
 
 variable "budget_email" {
