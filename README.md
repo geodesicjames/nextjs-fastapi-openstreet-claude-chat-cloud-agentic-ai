@@ -225,7 +225,15 @@ and caches apply to chat too:
 | `find_location` | Geocodes a place name (Nominatim, cached) |
 | `search_places` | Places of given categories within a radius, nearest first (PostGIS cache, Overpass on a miss) |
 | `get_place_details` | Opening hours, address, website and other OSM tags for one place |
-| `save_place` | Saves a place to the user's list (`GET` / `DELETE /saved-places`) | Tests use a scripted fake model. One
+| `save_place` | Saves a place to the user's list (`GET` / `DELETE /saved-places`) |
+
+**What the map shows.** Each message carries the map view: its centre, how
+far it reaches, and the selected place's ID, if any. The backend turns that
+into a short `<map_view>` note before the user's words, taking the place's
+name from the database. So "more details on 1802 Lounge", or "cafés near
+here", means the area on screen rather than anywhere in the world. Naming a
+town ("cafés in Leith") still works as before. The note is stored with the
+message, so replays are exact, but it's hidden from the transcript. Tests use a scripted fake model. One
 opt-in test calls the real API for a fraction of a cent:
 `RUN_LIVE_CLAUDE=1 uv run pytest tests/test_chat_live.py -s`.
 
@@ -407,6 +415,7 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every PR and on pushes to `m
 | **Initial migration enables PostGIS** | The Docker image enables it already, but managed Postgres (e.g. RDS) doesn't. The migration keeps the schema reproducible. |
 | **Tests use a real PostGIS database** | Spatial behaviour can't be meaningfully faked with SQLite or mocks. |
 | **Server Components fetch via a `server-only` module** | `API_URL` and the session cookie never reach browser JavaScript. |
+| **Map view goes in the user's message, not the system prompt** | The system prompt stays byte-for-byte identical, so prompt caching keeps working whatever the map shows. Sending the view with every message, rather than only when no place is typed, avoids guessing what counts as a location. Claude decides, and an explicitly named town wins. |
 | **Magic-link sign-in, no passwords** | Invited users (e.g. recruiters) never need to create a password, and there are no password hashes to protect. |
 | **Server-side sessions, not JWTs** | The cookie holds a random token and the DB stores only its SHA-256 hash. Sign-out and revocation take effect immediately, as with Django's DB sessions. A JWT can't be revoked before it expires without a server-side denylist. |
 | **Browser talks only to Next.js** | The session cookie belongs to the frontend's origin and Next.js forwards it to FastAPI server-side. No CORS, no cross-site cookies, and FastAPI can live on a private network in production. |

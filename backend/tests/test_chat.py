@@ -4,7 +4,9 @@ See tests/chat_helpers.py for FakeChatModel. The real SDK path is covered by
 the opt-in live test in test_chat_live.py.
 """
 
+import uuid
 from collections.abc import Callable
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
 
@@ -14,7 +16,7 @@ from httpx import AsyncClient
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import ChatMessage, LlmUsage, User
+from app.models import ChatMessage, LlmUsage, Place, User
 from app.services import chat as chat_service
 from app.services.llm import ModelUnavailableError
 from app.services.pricing import TokenUsage
@@ -270,6 +272,93 @@ async def test_message_length_limits(
     conversation_id = await new_conversation(client)
     response = await client.post(
         f"/chat/conversations/{conversation_id}/messages", json={"text": text}
+    )
+    assert response.status_code == 422
+    assert fake_model.calls == []
+
+
+# --- Map view -------------------------------------------------------------------------
+
+
+async def test_map_view_goes_to_the_model_but_not_into_the_transcript(
+    client: AsyncClient, db: AsyncSession, chatter: User, fake_model: FakeChatModel
+) -> None:
+    place = Place(
+        osm_type="node",
+        osm_id=1802,
+        name="1802 Lounge",
+        category="restaurant",
+        tags={"name": "1802 Lounge"},
+        geom="SRID=4326;POINT(-3.18 55.95)",
+        fetched_at=datetime.now(UTC),
+    )
+    db.add(place)
+    await db.commit()
+    fake_model.replies.append(reply("It's a restaurant."))
+    conversation_id = await new_conversation(client)
+
+    view = {"lat": 55.957, "lon": -3.1847, "radius_m": 1240, "selected_place_id": str(place.id)}
+    response = await client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"text": "More details on 1802 Lounge?", "map": view},
+    )
+    assert response.status_code == 200
+
+    # The model gets the view first, with the selected place's name and
+    # category from the database, then the user's own words.
+    [call] = fake_model.calls
+    [message] = call["messages"]
+    note, asked = message["content"]
+    assert asked == {"type": "text", "text": "More details on 1802 Lounge?"}
+    assert note["text"] == (
+        "<map_view>\n"
+        "The user's map is centred on 55.95700, -3.18470 and reaches about 1.2 km "
+        "from the centre.\n"
+        f"They have selected 1802 Lounge (restaurant, place_id {place.id}).\n"
+        "</map_view>"
+    )
+    # The system prompt is unchanged, so it still caches.
+    assert call["system"] == chat_service.SYSTEM_PROMPT
+
+    # The transcript and the title show only what the user typed.
+    detail = (await client.get(f"/chat/conversations/{conversation_id}")).json()
+    assert detail["title"] == "More details on 1802 Lounge?"
+    assert detail["messages"][0]["text"] == "More details on 1802 Lounge?"
+
+
+async def test_map_view_ignores_an_unknown_selected_place(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel
+) -> None:
+    fake_model.replies.append(reply("Here's what's nearby."))
+    conversation_id = await new_conversation(client)
+
+    view = {"lat": 55.957, "lon": -3.1847, "radius_m": 400, "selected_place_id": str(uuid.uuid4())}
+    response = await client.post(
+        f"/chat/conversations/{conversation_id}/messages",
+        json={"text": "Cafés near here?", "map": view},
+    )
+    assert response.status_code == 200
+
+    note = fake_model.calls[0]["messages"][0]["content"][0]["text"]
+    assert "reaches about 400 m from the centre" in note
+    assert "selected" not in note
+
+
+@pytest.mark.parametrize(
+    "view",
+    [
+        {"lat": 91, "lon": 0, "radius_m": 100},
+        {"lat": 0, "lon": -181, "radius_m": 100},
+        {"lat": 0, "lon": 0, "radius_m": 0},
+        {"lat": 0, "lon": 0, "radius_m": 100, "selected_place_id": "not-a-uuid"},
+    ],
+)
+async def test_map_view_is_validated(
+    client: AsyncClient, chatter: User, fake_model: FakeChatModel, view: dict[str, Any]
+) -> None:
+    conversation_id = await new_conversation(client)
+    response = await client.post(
+        f"/chat/conversations/{conversation_id}/messages", json={"text": "Hi", "map": view}
     )
     assert response.status_code == 422
     assert fake_model.calls == []

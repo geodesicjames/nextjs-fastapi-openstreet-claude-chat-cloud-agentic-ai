@@ -34,7 +34,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import Settings
-from app.models import ChatMessage, Conversation, User
+from app.models import ChatMessage, Conversation, Place, User
+from app.schemas.chat import MapView
 from app.services.chat_access import ChatStatus, get_chat_status, record_usage
 from app.services.chat_tools import TOOLS, ToolContext, ToolOutcome, run_tool
 from app.services.llm import ChatModel, ModelReply, ModelUnavailableError, TextDelta
@@ -49,9 +50,18 @@ viewpoints. People ask you where to go; you answer from the app's own map \
 data using your tools.
 
 How to work:
-- When the user mentions a place by name, call find_location first, then \
-search_places around the best match. If the name is ambiguous, pick the \
-likeliest match and say which one you used.
+- A user message may start with a <map_view> note. The app adds it, not the \
+user: where their map is centred, how far the view reaches, and the place \
+they have selected, if any. Unless the user names somewhere else, that view \
+is where they mean. For "near here", or a business or kind of place with no \
+town or area named, call search_places around the map's centre (radius \
+about the view's size, at most 2000) rather than find_location, which \
+searches the whole world. If they ask about the selected place, call \
+get_place_details with its place_id directly.
+- When the user names a town, area, street or landmark, call find_location \
+first, then search_places around the best match. If the name is ambiguous, \
+prefer a match near the map view, otherwise the likeliest one, and say \
+which one you used.
 - Only recommend places that search_places returned. Never invent \
 businesses, addresses, opening hours or prices. If a search finds nothing, \
 say so and suggest a larger radius or another category.
@@ -181,8 +191,41 @@ async def load_messages(db: AsyncSession, conversation: Conversation) -> list[Ch
 
 
 def visible_text(message: ChatMessage) -> str:
-    """The text a person should see: text blocks only (no thinking, no tools)."""
-    return "".join(b.get("text", "") for b in message.content if b.get("type") == "text")
+    """The text a person should see: text blocks only (no thinking, no tools,
+    no map-view notes the app added to the user's message)."""
+    return "".join(
+        b.get("text", "")
+        for b in message.content
+        if b.get("type") == "text" and not b.get("text", "").startswith(MAP_VIEW_TAG)
+    )
+
+
+# --- Map view ---------------------------------------------------------------------------
+
+MAP_VIEW_TAG = "<map_view>"
+
+
+async def describe_map_view(db: AsyncSession, view: MapView) -> str:
+    """The note added before the user's message: what their map shows.
+
+    It goes in the user's message, not the system prompt, so the system
+    prompt stays identical (and cached) whatever the map shows. It's saved
+    with the message, so a replayed conversation keeps the view each message
+    was asked in. The selected place's name comes from the database, never
+    from the browser.
+    """
+    reach = f"{view.radius_m / 1000:.1f} km" if view.radius_m >= 1000 else f"{view.radius_m} m"
+    lines = [
+        f"The user's map is centred on {view.lat:.5f}, {view.lon:.5f} "
+        f"and reaches about {reach} from the centre."
+    ]
+    place = await db.get(Place, view.selected_place_id) if view.selected_place_id else None
+    if place is not None:
+        name = place.name or "an unnamed place"
+        lines.append(
+            f"They have selected {name} ({place.category.replace('_', ' ')}, place_id {place.id})."
+        )
+    return f"{MAP_VIEW_TAG}\n" + "\n".join(lines) + "\n</map_view>"
 
 
 # --- One turn -------------------------------------------------------------------------
@@ -214,6 +257,7 @@ async def stream_reply(
     conversation: Conversation,
     text: str,
     tools: ToolContext,
+    map_view: MapView | None = None,
 ) -> AsyncIterator[ChatEvent]:
     """Run one turn, yielding events for the client. Never raises for API errors."""
     if not await _lock(db, conversation):
@@ -221,8 +265,12 @@ async def stream_reply(
         return
 
     history = await load_messages(db, conversation)
+    user_content: list[dict[str, Any]] = []
+    if map_view is not None:
+        user_content.append({"type": "text", "text": await describe_map_view(db, map_view)})
+    user_content.append({"type": "text", "text": text})
     # This turn's messages, in order, saved together at the end.
-    turn: list[tuple[str, list[dict[str, Any]]]] = [("user", [{"type": "text", "text": text}])]
+    turn: list[tuple[str, list[dict[str, Any]]]] = [("user", user_content)]
     tool_steps = 0
     answer_now = False  # set once the tool-step cap is reached
     total_cost = Decimal(0)

@@ -23,6 +23,29 @@ export type ChatPlace = {
   lon: number;
 };
 
+/**
+ * What the map shows as a message is sent (MapView in
+ * backend/app/schemas/chat.py), so "near here" or a place name with no town
+ * means the area on screen rather than anywhere in the world.
+ */
+export type MapView = {
+  lat: number;
+  lon: number;
+  /** From the centre to the view's farthest corner. */
+  radius_m: number;
+  selected_place_id: string | null;
+};
+
+/** Great-circle distance in metres (haversine). */
+export function distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const rad = Math.PI / 180;
+  const dLat = (lat2 - lat1) * rad;
+  const dLon = (lon2 - lon1) * rad;
+  const a =
+    Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * rad) * Math.cos(lat2 * rad) * Math.sin(dLon / 2) ** 2;
+  return 2 * 6_371_000 * Math.asin(Math.sqrt(a));
+}
+
 export type ChatEvent =
   | { type: "text"; text: string }
   | { type: "tool_start"; tool: string; input: Record<string, unknown> }

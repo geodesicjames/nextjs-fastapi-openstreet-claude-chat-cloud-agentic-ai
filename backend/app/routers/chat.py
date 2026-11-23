@@ -122,7 +122,7 @@ async def send_message(
 
     async def events() -> AsyncIterator[str]:
         async for event in chat_service.stream_reply(
-            db, settings, model, access, conversation, body.text, tools
+            db, settings, model, access, conversation, body.text, tools, body.map
         ):
             yield f"event: {event.type}\ndata: {json.dumps(chat_service.event_payload(event))}\n\n"
 

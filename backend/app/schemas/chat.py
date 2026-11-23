@@ -59,7 +59,21 @@ class ConversationDetail(ConversationOut):
     messages: list[MessageOut]
 
 
+class MapView(BaseModel):
+    """What the user's map shows as they send a message, so "near here" and a
+    bare place name mean the area they're looking at, not the whole world."""
+
+    lat: float = Field(ge=-90, le=90)
+    lon: float = Field(ge=-180, le=180)
+    # From the centre to the view's farthest corner.
+    radius_m: int = Field(ge=1, le=20_000_000)
+    # The place whose card is open, if any. Only the id is taken from the
+    # browser; its name and category are looked up in the database.
+    selected_place_id: uuid.UUID | None = None
+
+
 class MessageIn(BaseModel):
     # The upper bound is CHAT_MAX_MESSAGE_CHARS, checked in the endpoint so it
     # follows the setting.
     text: str = Field(min_length=1)
+    map: MapView | None = None
