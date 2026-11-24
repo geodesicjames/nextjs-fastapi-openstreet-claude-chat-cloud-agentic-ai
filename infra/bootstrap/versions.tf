@@ -9,10 +9,11 @@ terraform {
     }
   }
 
-  # The bootstrap creates the state bucket, so its own state starts local.
-  # After the first apply, move it into the bucket (see README.md, step 4):
+  # The bootstrap creates the state bucket, so its own state starts local:
+  # in a brand-new account, comment this out for the first apply, then move
+  # the state into the bucket (see README.md, step 4):
   #   terraform init -migrate-state -backend-config=backend.hcl
-  # backend "s3" {}
+  backend "s3" {}
 }
 
 provider "aws" {

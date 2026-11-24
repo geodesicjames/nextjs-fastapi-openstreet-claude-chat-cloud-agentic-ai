@@ -77,12 +77,13 @@ terraform plan        # read it: about 10 resources, all described in main.tf
 terraform apply
 ```
 
-Then move the bootstrap's own state into the bucket it just created, so it isn't only on your
-laptop:
+`versions.tf` declares an S3 backend, but the bucket doesn't exist yet, so in a brand-new
+account comment out `backend "s3" {}` for this first `init` and `apply`. Then move the
+bootstrap's own state into the bucket it just created, so it isn't only on your laptop:
 
 ```bash
 cp backend.hcl.example backend.hcl              # set bucket to the state_bucket output
-# in versions.tf, uncomment:   backend "s3" {}
+# in versions.tf, restore:   backend "s3" {}
 terraform init -migrate-state -backend-config=backend.hcl   # answer "yes"
 rm -f terraform.tfstate terraform.tfstate.backup             # now safely in S3
 ```
