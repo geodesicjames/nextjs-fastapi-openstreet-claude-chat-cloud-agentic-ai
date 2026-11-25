@@ -27,6 +27,7 @@ import {
   fetchAccess,
   type MapView,
   nameKey,
+  appendReplyText,
   readEvents,
   type StoredMessage,
 } from "@/lib/chat";
@@ -264,14 +265,21 @@ export function ChatPanel({
         updateLast((m) => ({ ...m, error: message }));
         return;
       }
+      // Text that follows tool calls comes from a new model call: it starts a
+      // new paragraph instead of running on from the text before the tools.
+      let afterTools = false;
       for await (const e of readEvents(res.body)) {
-        if (e.type === "text") updateLast((m) => ({ ...m, text: m.text + e.text }));
-        else if (e.type === "tool_start")
+        if (e.type === "text") {
+          const newParagraph = afterTools;
+          afterTools = false;
+          updateLast((m) => ({ ...m, text: appendReplyText(m.text, e.text, newParagraph) }));
+        } else if (e.type === "tool_start") {
+          afterTools = true;
           updateLast((m) => ({
             ...m,
             tools: [...m.tools, { label: describeTool(e.tool, e.input), summary: null, ok: true }],
           }));
-        else if (e.type === "tool_result") {
+        } else if (e.type === "tool_result") {
           updateLast((m) => ({
             ...m,
             tools: m.tools.map((t, i) =>

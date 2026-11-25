@@ -113,6 +113,17 @@ export async function* readSse(body: ReadableStream<Uint8Array>): AsyncGenerator
   }
 }
 
+/**
+ * Add a streamed chunk to an answer. One answer can span several model calls
+ * (text, tool calls, more text); `newParagraph` marks the first chunk after
+ * tool calls, which gets a blank line before it so it doesn't run on from the
+ * earlier text ("…closing time.Yes. Starbucks…").
+ */
+export function appendReplyText(text: string, chunk: string, newParagraph: boolean): string {
+  if (!newParagraph || !text.trim()) return text + chunk;
+  return `${text.trimEnd()}\n\n${chunk.trimStart()}`;
+}
+
 /** The chat reply's events (see backend/app/services/chat.py). */
 export async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<ChatEvent> {
   for await (const { event, data } of readSse(body)) {
