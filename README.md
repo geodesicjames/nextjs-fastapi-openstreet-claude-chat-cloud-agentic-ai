@@ -1,27 +1,54 @@
 # Places
 
-A map-based "ask about places" web app. Browse an OpenStreetMap-based map, search
-for places, and (with invited access) chat with Claude, which uses tools to search
-places, compute routes and, eventually, plan multi-step trips as an agent.
+A map-based "ask about places" web app. Browse OpenStreetMap places on a map,
+search for them, and (with invited access) ask Claude about them. Claude answers
+by calling tools that search a PostGIS cache of OpenStreetMap, streams its reply,
+and puts the places it mentions on the map. An agent plans multi-stop trips in
+the background, with a human approval step.
 
-> **Status:** Phase 2, maps. `/map` shows OpenStreetMap places, cached in
-> PostGIS, with place search. Magic-link sign-in and invite-only chat access are
-> in place. Claude chat comes next.
+**Live demo: <https://d1u3hzq737vhqg.cloudfront.net>.** The map and place search are
+open to everyone. Chat and the trip planner are invite-only, because every
+answer costs real money: request access from the site.
+
+![Exploring the map, then asking Claude about a place: the answer streams in and its place names fly the map to them](docs/demo.gif)
+
+What it demonstrates:
+
+- **LLM integration:** streaming tool use over server-sent events, prompt
+  caching, per-call token and cost logging, per-user daily budgets, and evals of
+  tool choice.
+- **Agentic AI:** a hand-written plan → act → check → revise loop with
+  guardrails, persisted and resumable runs, step tracing and human approval.
+- **Geospatial:** PostGIS spatial queries, and a grid cache in front of Overpass
+  that keeps the app inside its usage policy.
+- **Production habits:** magic-link auth with server-side sessions, tests on
+  every feature, CI on every PR, and AWS deployment with Terraform, GitHub OIDC
+  and a required reviewer.
+
+> **Status:** Phases 1 to 5 are done: foundation, maps, Claude chat, cloud
+> deployment and the agent trip planner. See the [roadmap](CLAUDE.md#roadmap).
 
 ## Architecture
 
 ```
- Browser ──► Next.js (App Router, :3000)      same origin: no CORS
-                │  Server Components / Server Actions call the API
-                │  server-side, forwarding the session cookie
-                ▼
-             FastAPI (:8000) ──► Postgres + PostGIS (:5432)
-                │
-                └──► (later) Anthropic API, Overpass, Nominatim
+ Browser ──► CloudFront ──► Next.js (App Router, :3000)   same origin: no CORS
+                               │  Server Components, Server Actions and route
+                               │  handlers call the API server-side,
+                               │  forwarding the session cookie
+                               ▼
+                            FastAPI (:8000) ──► Postgres + PostGIS (:5432)
+                               │  ├─ chat: streamed tool-use loop
+                               │  └─ agent worker: background trip-planner runs
+                               │
+                               ├──► Anthropic API (Claude)
+                               ├──► Overpass (places), Nominatim (geocoding)
+                               └──► SES (magic-link email)
 ```
 
 FastAPI owns all data, auth and LLM calls. Next.js never talks to Anthropic or
-the database directly, and the browser never talks to FastAPI directly.
+the database directly, and the browser never talks to FastAPI directly. In
+production all three containers run on one EC2 instance behind CloudFront (see
+[Production stack](#production-stack) and [infra/](infra/README.md)).
 
 | Layer    | Tech                                                                 |
 | -------- | -------------------------------------------------------------------- |
@@ -29,7 +56,9 @@ the database directly, and the browser never talks to FastAPI directly.
 | Backend  | FastAPI, Pydantic v2, pydantic-settings, SQLAlchemy 2.0 async, Alembic |
 | Database | Postgres 17 + PostGIS 3.5                                            |
 | Tooling  | uv, ruff, pyright, pytest · pnpm, ESLint, Prettier · pre-commit, gitleaks |
+| LLM      | Claude (Haiku 5.5 by default) via the official `anthropic` SDK       |
 | CI       | GitHub Actions                                                       |
+| Cloud    | AWS: EC2, CloudFront, S3, SES, SSM · Terraform                       |
 
 ## Repo layout
 
